@@ -1,0 +1,8 @@
+{
+  "include": ["src", "app.py"],
+  "exclude": ["data", "logs", ".git"],
+  "extraPaths": ["."],
+  "pythonVersion": "3.11",
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false
+}

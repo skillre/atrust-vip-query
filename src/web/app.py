@@ -301,6 +301,108 @@ def display_history_result(data: dict):
         st.warning("未找到历史记录")
 
 
+def render_import_section():
+    """渲染数据导入区域"""
+    st.subheader("📥 导入日志数据")
+    
+    st.info("支持导入 aTrust 导出的 CSV 或 Excel 访问日志文件，系统会自动提取用户名、虚拟IP等关键信息。")
+    
+    # 文件上传
+    uploaded_file = st.file_uploader(
+        "选择日志文件",
+        type=["csv", "xlsx", "xls"],
+        help="支持 CSV 和 Excel 格式",
+        key="log_file"
+    )
+    
+    if uploaded_file is not None:
+        st.write(f"**文件名:** {uploaded_file.name}")
+        st.write(f"**文件大小:** {uploaded_file.size / 1024:.1f} KB")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("👁️ 预览数据", type="secondary", key="preview_btn"):
+                with st.spinner("正在解析文件..."):
+                    files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                    
+                    try:
+                        response = requests.post(
+                            f"{get_api_base_url()}/api/v1/import/preview",
+                            files=files,
+                            timeout=30
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                        
+                        if result.get("code") == 0:
+                            data = result.get("data", {})
+                            st.success(f"解析成功！共 {data.get('total_rows', 0)} 行数据")
+                            
+                            # 显示列名
+                            columns = data.get("columns", [])
+                            if columns:
+                                st.write(f"**检测到 {len(columns)} 列:**")
+                                st.code(", ".join(columns[:20]) + ("..." if len(columns) > 20 else ""),
+                                        language=None)
+                            
+                            # 显示预览数据
+                            preview = data.get("preview", [])
+                            if preview:
+                                st.write("**前 5 行数据预览:**")
+                                import pandas as pd
+                                st.dataframe(pd.DataFrame(preview), use_container_width=True)
+                        else:
+                            st.error(f"预览失败: {result.get('message')}")
+                    except Exception as e:
+                        st.error(f"预览请求失败: {e}")
+        
+        with col2:
+            if st.button("📥 开始导入", type="primary", key="import_btn"):
+                with st.spinner("正在导入数据，请稍候..."):
+                    files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                    
+                    try:
+                        response = requests.post(
+                            f"{get_api_base_url()}/api/v1/import/upload",
+                            files=files,
+                            timeout=120
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                        
+                        if result.get("code") == 0:
+                            data = result.get("data", {})
+                            st.success(result.get("message", "导入成功"))
+                            
+                            # 显示导入统计
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("总行数", data.get("total_rows", 0))
+                            with col2:
+                                st.metric("成功导入", data.get("imported", 0))
+                            with col3:
+                                st.metric("跳过/错误", 
+                                         data.get("skipped", 0) + data.get("errors", 0))
+                            
+                            if data.get("errors", 0) > 0:
+                                st.warning(f"有 {data['errors']} 行数据处理出错，可能部分数据未导入")
+                        else:
+                            st.error(f"导入失败: {result.get('message')}")
+                    except Exception as e:
+                        st.error(f"导入请求失败: {e}")
+    
+    st.markdown("---")
+    st.markdown("### 导入说明")
+    st.markdown("""
+    - 从 aTrust 控制台导出访问日志（CSV 或 Excel 格式）
+    - 上传到本系统，自动提取 **用户名、虚拟IP、真实IP** 等关键信息
+    - 导入后即可通过查询、反查、历史记录等功能使用
+    - 支持多次导入，重复数据会自动更新
+    - 建议定期导出最新日志并导入以保持数据更新
+    """)
+
+
 def render_sidebar():
     """渲染侧边栏"""
     with st.sidebar:
@@ -320,9 +422,10 @@ def render_sidebar():
         st.markdown("---")
         st.markdown("### 使用说明")
         st.markdown("""
-        1. **查询用户**: 输入用户名或显示名
-        2. **反查IP**: 输入虚拟IP地址
-        3. **历史记录**: 查看用户的历史IP分配
+        1. **导入数据**: 上传 aTrust 导出的日志文件
+        2. **查询用户**: 输入用户名或显示名
+        3. **反查IP**: 输入虚拟IP地址
+        4. **历史记录**: 查看用户的历史IP分配
         """)
 
 
@@ -332,15 +435,23 @@ def main():
     render_sidebar()
     
     # 创建标签页
-    tab1, tab2, tab3 = st.tabs(["📋 查询虚拟IP", "🔄 反查用户", "📜 历史记录"])
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📥 导入数据",
+        "📋 查询虚拟IP",
+        "🔄 反查用户",
+        "📜 历史记录"
+    ])
     
     with tab1:
-        render_query_section()
+        render_import_section()
     
     with tab2:
-        render_reverse_section()
+        render_query_section()
     
     with tab3:
+        render_reverse_section()
+    
+    with tab4:
         render_history_section()
 
 

@@ -18,7 +18,7 @@ BASE_DIR = Path(__file__).parent.parent
 
 class AtrustConfig(BaseModel):
     """aTrust 设备配置"""
-    host: str = "https://192.168.1.100:4433"
+    host: str = ""
     api_id: str = ""
     api_key: str = ""
     timeout: int = 10
@@ -26,7 +26,7 @@ class AtrustConfig(BaseModel):
 
 class SyslogConfig(BaseModel):
     """Syslog 接收配置"""
-    enabled: bool = True
+    enabled: bool = False
     host: str = "0.0.0.0"
     port: int = 514
     protocol: str = "udp"

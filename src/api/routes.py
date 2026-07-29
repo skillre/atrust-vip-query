@@ -6,13 +6,14 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, UploadFile, File
 from loguru import logger
 
 from src.storage.database import get_database
 from src.collector.api_collector import get_api_collector
 from src.collector.syslog_collector import get_syslog_receiver
-from src.storage.models import ApiResponse, HealthData
+from src.collector.file_importer import get_file_importer
+from src.storage.models import ApiResponse, HealthData, VipInfo
 
 
 router = APIRouter(prefix="/api/v1")
@@ -45,7 +46,12 @@ async def query_user_vip(
                     result.is_online = True
                     vip = user.get("virtualIp")
                     if vip:
-                        result.online_vips = [{"ip": vip, "real_ip": user.get("realIp")}]
+                        result.online_vips = [
+                            VipInfo(
+                                ip=vip,
+                                real_ip=user.get("realIp")
+                            )
+                        ]
                     break
     
     return ApiResponse(
@@ -125,6 +131,103 @@ async def get_user_list(
     )
 
 
+@router.post("/import/upload")
+async def upload_log_file(
+    file: UploadFile = File(..., description="日志文件（CSV/Excel）")
+) -> ApiResponse:
+    """
+    上传并导入日志文件
+    
+    支持 CSV 和 Excel 格式的 aTrust 访问日志文件。
+    """
+    # 检查文件格式
+    allowed_extensions = {".csv", ".xlsx", ".xls"}
+    filename = file.filename or "unknown.csv"
+    
+    if not any(filename.lower().endswith(ext) for ext in allowed_extensions):
+        return ApiResponse(
+            code=4001,
+            message=f"不支持的文件格式，请上传 CSV 或 Excel 文件",
+            data=None
+        )
+    
+    try:
+        # 读取文件内容
+        content = await file.read()
+        
+        if not content:
+            return ApiResponse(
+                code=4002,
+                message="文件为空",
+                data=None
+            )
+        
+        # 导入文件
+        importer = get_file_importer()
+        result = importer.import_file(content, filename)
+        
+        if result["success"]:
+            return ApiResponse(
+                code=0,
+                message=result["message"],
+                data=result
+            )
+        else:
+            return ApiResponse(
+                code=4003,
+                message=result["message"],
+                data=result
+            )
+    
+    except Exception as e:
+        logger.error(f"文件导入失败: {e}")
+        return ApiResponse(
+            code=5000,
+            message=f"文件导入失败: {str(e)}",
+            data=None
+        )
+
+
+@router.post("/import/preview")
+async def preview_log_file(
+    file: UploadFile = File(..., description="日志文件（CSV/Excel）")
+) -> ApiResponse:
+    """
+    预览日志文件
+    
+    解析文件前几行，显示数据结构，不导入数据库。
+    """
+    try:
+        content = await file.read()
+        
+        if not content:
+            return ApiResponse(code=4002, message="文件为空", data=None)
+        
+        # 尝试解码
+        text_content = None
+        for encoding in ["utf-8", "gbk", "gb2312", "utf-8-sig"]:
+            try:
+                text_content = content.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        
+        if text_content is None:
+            return ApiResponse(code=4004, message="无法识别文件编码", data=None)
+        
+        importer = get_file_importer()
+        result = importer.get_import_preview(text_content)
+        
+        return ApiResponse(
+            code=0 if result["success"] else 4005,
+            message="预览成功" if result["success"] else result.get("message", "预览失败"),
+            data=result
+        )
+    
+    except Exception as e:
+        return ApiResponse(code=5000, message=f"预览失败: {str(e)}", data=None)
+
+
 @router.get("/system/health")
 async def health_check() -> ApiResponse:
     """
@@ -133,14 +236,10 @@ async def health_check() -> ApiResponse:
     检查系统运行状态。
     """
     db = get_database()
-    collector = get_api_collector()
     syslog = get_syslog_receiver()
     
     # 数据库状态
     db_status = db.health_check()
-    
-    # aTrust API 状态
-    api_status = collector.health_check()
     
     # Syslog 状态
     syslog_status = syslog.health_check()
@@ -149,7 +248,7 @@ async def health_check() -> ApiResponse:
         status="healthy" if db_status["status"] == "connected" else "degraded",
         version="1.0.0",
         database=db_status["status"],
-        atrust_api=api_status,
+        atrust_api="disabled",
         syslog=syslog_status
     )
     
