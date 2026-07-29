@@ -59,27 +59,39 @@ EMPTY_VALUES = {" -", "-", "—", "N/A", "n/a", "", "None", "null"}
 
 
 def _clean_value(value: Optional[str]) -> Optional[str]:
-    # 清洗字段值
-    # 处理 aTrust CSV 导出的特殊格式：
-    # - 去除外层三引号包裹
-    # - 去除首尾空白和 tab
-    # - 识别空值标记
+    # 清洗字段值 - 处理 aTrust CSV 导出的特殊格式
     if value is None:
         return None
     
     # 转为字符串
-    cleaned: str = str(value).strip()
-    value = cleaned
+    value = str(value)
     
-    # 去除外层 """ 包裹（aTrust CSV 特殊格式）
-    if value.startswith('"""') and value.endswith('"""'):
-        value = value[3:-3]
-    elif value.startswith('"""'):
-        value = value[3:]
-    elif value.endswith('"""'):
-        value = value[:-3]
+    # 去除首尾空白、tab、换行
+    value = value.strip().strip("\t").strip("\n").strip("\r")
     
-    # 再次去除首尾空白和 tab
+    # 去除外层引号包裹（单引号、双引号、三引号）
+    # 循环处理，因为可能有多层嵌套
+    for _ in range(5):
+        changed = False
+        # 三引号
+        if value.startswith('"""') and value.endswith('"""'):
+            value = value[3:-3]
+            changed = True
+        elif value.startswith("'''") and value.endswith("'''"):
+            value = value[3:-3]
+            changed = True
+        # 双引号
+        elif value.startswith('"') and value.endswith('"') and len(value) > 1:
+            value = value[1:-1]
+            changed = True
+        # 单引号
+        elif value.startswith("'") and value.endswith("'") and len(value) > 1:
+            value = value[1:-1]
+            changed = True
+        if not changed:
+            break
+    
+    # 再次去除首尾空白和 tab（引号去掉后可能露出新的空白）
     value = value.strip().strip("\t").strip()
     
     # 检查是否为空值
