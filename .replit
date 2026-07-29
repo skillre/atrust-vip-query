@@ -4,6 +4,7 @@
 
 # 运行配置
 run = "python app.py"
+modules = ["python-3.11"]
 
 # 解释器配置
 [interpreter]
@@ -20,3 +21,35 @@ PYTHONUNBUFFERED = "1"
 # 部署配置
 [deployment]
 run = ["sh", "-c", "pip install -r requirements.txt && python app.py"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python app.py"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
