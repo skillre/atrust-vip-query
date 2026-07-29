@@ -1,0 +1,59 @@
+# ============================================================
+# aTrust 用户虚拟IP查询系统 - Fly.io 配置
+# ============================================================
+
+# 应用名称（部署时会自动创建）
+# app = "atrust-vip-query"
+
+# 主区域（选择离你最近的）
+# region = "hkg"  # 香港
+# region = "nrt"  # 东京
+# region = "sin"  # 新加坡
+
+# 构建配置
+[build]
+dockerfile = "Dockerfile"
+
+# HTTP 服务配置（FastAPI + Streamlit）
+[http_service]
+internal_port = 8000
+force_https = true
+auto_stop_machines = true
+auto_start_machines = true
+min_machines_running = 0
+
+[http_service.concurrency]
+type = "connections"
+hard_limit = 25
+soft_limit = 20
+
+# 健康检查
+[[http_service.checks]]
+grace_period = "5s"
+interval = "10s"
+method = "GET"
+timeout = "2s"
+path = "/api/v1/system/health"
+
+# UDP 端口配置（Syslog 接收）
+# Fly.io 支持 UDP，但需要通过 services 配置
+[[services]]
+internal_port = 514
+protocol = "udp"
+
+[[services.ports]]
+handlers = ["udp"]
+port = 514
+
+# 环境变量（敏感信息不要写在这里，用 fly secrets set）
+# [env]
+#   DATABASE_PATH = "./data/vip_data.db"
+#   SYSLOG_ENABLED = "true"
+#   API_DEBUG = "false"
+
+# 卷配置（持久化 SQLite 数据库）
+# 部署前需要先创建卷：
+# fly volumes create data_volume --region hkg --size 1
+[[mounts]]
+source = "data_volume"
+destination = "/app/data"

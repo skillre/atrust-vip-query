@@ -1,0 +1,73 @@
+# ============================================================
+# aTrust 用户虚拟IP查询系统 - 配置文件
+# ============================================================
+
+# aTrust 设备配置
+atrust:
+  # aTrust控制台地址（HTTPS）
+  host: "https://192.168.1.100:4433"
+  
+  # API认证信息（从控制台获取）
+  api_id: "YOUR_API_ID"
+  api_key: "YOUR_API_KEY"
+  
+  # API查询超时（秒）
+  timeout: 10
+
+# Syslog 接收配置
+syslog:
+  # 是否启用Syslog接收
+  enabled: true
+  
+  # 监听地址（0.0.0.0表示所有网卡）
+  host: "0.0.0.0"
+  
+  # 监听端口
+  port: 514
+  
+  # 协议类型：udp 或 tcp
+  protocol: "udp"
+
+# 数据库配置
+database:
+  # SQLite数据库文件路径
+  path: "./data/vip_data.db"
+  
+  # 数据保留天数（自动清理过期记录）
+  retention_days: 90
+
+# Web 界面配置（Streamlit）
+web:
+  # 监听地址
+  host: "0.0.0.0"
+  
+  # 监听端口
+  port: 8501
+  
+  # 页面标题
+  title: "aTrust 用户虚拟IP查询系统"
+
+# API 服务配置（FastAPI）
+api:
+  # 监听地址
+  host: "0.0.0.0"
+  
+  # 监听端口
+  port: 8000
+  
+  # 是否开启调试模式
+  debug: false
+
+# 日志配置
+logging:
+  # 日志级别：DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # 日志文件路径
+  file: "./logs/app.log"
+  
+  # 日志文件最大大小（MB）
+  max_size: 10
+  
+  # 保留日志文件数量
+  backup_count: 5
