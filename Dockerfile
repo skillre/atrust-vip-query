@@ -1,6 +1,5 @@
 # ============================================================
 # aTrust 用户虚拟IP查询系统 - Docker 配置
-# 用于 Fly.io 部署
 # ============================================================
 
 # 使用 Python 3.11 slim 镜像
@@ -13,10 +12,8 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# 复制依赖文件
+# 安装依赖（利用 Docker 缓存层）
 COPY requirements.txt .
-
-# 安装依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制项目文件
@@ -32,6 +29,10 @@ RUN mkdir -p data logs
 EXPOSE 514/udp
 EXPOSE 8000
 EXPOSE 8501
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/api/v1/system/health', timeout=3)" || exit 1
 
 # 启动命令
 CMD ["python", "app.py"]
