@@ -3,7 +3,7 @@
 # ============================================================
 
 run = "bash -c 'cd frontend && npm install && npm run build && cd .. && mkdir -p static && cp -r frontend/dist/* static/ && python app.py'"
-modules = ["nodejs-20"]
+modules = ["nodejs-20", "python-base-3.13"]
 
 [interpreter]
 channel = "python-3.11"
@@ -24,3 +24,27 @@ externalPort = 80
 [[ports]]
 localPort = 8000
 externalPort = 8000
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python app.py"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
