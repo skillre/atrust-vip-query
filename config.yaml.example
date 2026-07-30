@@ -29,7 +29,7 @@ syslog:
   # 监听端口
   port: 514
   
-  # 协议类型：udp 或 tcp
+  # 协议类型：udp 或 tcp（Replit 等不支持 UDP 暴露的平台请用 tcp）
   protocol: "udp"
 
 # 数据库配置

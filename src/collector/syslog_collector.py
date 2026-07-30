@@ -175,25 +175,40 @@ class SyslogReceiver:
             return True
 
         try:
-            # 创建 UDP socket
-            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            # 增大接收缓冲区，减少高流量时的丢包
-            self._socket.setsockopt(
-                socket.SOL_SOCKET, socket.SO_RCVBUF, self.buffer_size
-            )
-            self._socket.bind((self.host, self.port))
-            self._socket.settimeout(1.0)  # 1秒超时，用于检查 _running 标志
+            if self.protocol == "tcp":
+                # TCP 模式：创建 TCP server socket
+                self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                self._socket.bind((self.host, self.port))
+                self._socket.listen(32)  # 最大 32 个并发连接
+                self._socket.settimeout(1.0)
+            else:
+                # UDP 模式（默认）
+                self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                self._socket.setsockopt(
+                    socket.SOL_SOCKET, socket.SO_RCVBUF, self.buffer_size
+                )
+                self._socket.bind((self.host, self.port))
+                self._socket.settimeout(1.0)
 
             self._running = True
 
-            # 启动收包线程
-            recv_thread = threading.Thread(
-                target=self._receive_loop, name="syslog-recv", daemon=True
-            )
-            self._threads.append(recv_thread)
+            if self.protocol == "tcp":
+                # TCP 模式：启动 accept 线程 + 解析/写入线程
+                accept_thread = threading.Thread(
+                    target=self._tcp_accept_loop, name="syslog-tcp-accept",
+                    daemon=True,
+                )
+                self._threads.append(accept_thread)
+            else:
+                # UDP 模式：启动收包线程
+                recv_thread = threading.Thread(
+                    target=self._receive_loop, name="syslog-recv", daemon=True
+                )
+                self._threads.append(recv_thread)
 
-            # 启动解析线程池
+            # 启动解析线程池（UDP/TCP 共用）
             for i in range(self.parse_workers):
                 t = threading.Thread(
                     target=self._parse_loop,
@@ -262,7 +277,7 @@ class SyslogReceiver:
         )
 
     # ------------------------------------------------------------------
-    # 收包线程
+    # 收包线程（UDP）
     # ------------------------------------------------------------------
 
     def _receive_loop(self) -> None:
@@ -291,6 +306,71 @@ class SyslogReceiver:
                 break
             except Exception as e:
                 logger.error(f"接收数据异常: {e}")
+
+    # ------------------------------------------------------------------
+    # TCP Accept 线程
+    # ------------------------------------------------------------------
+
+    def _tcp_accept_loop(self) -> None:
+        """接受 TCP 连接，为每个连接启动一个读取线程"""
+        while self._running:
+            try:
+                if self._socket is None:
+                    break
+                client_sock, addr = self._socket.accept()
+                client_sock.settimeout(30.0)  # 30s 无数据则断开
+                t = threading.Thread(
+                    target=self._handle_tcp_connection,
+                    args=(client_sock, addr),
+                    daemon=True,
+                )
+                t.start()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            except Exception as e:
+                logger.error(f"TCP accept 异常: {e}")
+
+    def _handle_tcp_connection(
+        self, client_sock: socket.socket, addr: Tuple[str, int]
+    ) -> None:
+        """处理单个 TCP 连接：按行读取 syslog 消息"""
+        logger.debug(f"TCP 连接: {addr[0]}:{addr[1]}")
+        try:
+            buf = ""
+            while self._running:
+                try:
+                    chunk = client_sock.recv(self.buffer_size)
+                    if not chunk:
+                        break  # 客户端断开
+                    buf += chunk.decode("utf-8", errors="ignore")
+                    # TCP syslog 是换行分隔的
+                    while "\n" in buf:
+                        line, buf = buf.split("\n", 1)
+                        line = line.strip()
+                        if not line:
+                            continue
+                        with self._stats_lock:
+                            self._stats["received"] += 1
+                        try:
+                            self._parse_queue.put_nowait((line, addr))
+                        except queue.Full:
+                            logger.warning("解析队列已满，丢弃 TCP 数据")
+                            with self._stats_lock:
+                                self._stats["parse_errors"] += 1
+                except socket.timeout:
+                    continue
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            pass
+        except Exception as e:
+            logger.error(f"TCP 连接处理异常 {addr}: {e}")
+        finally:
+            try:
+                client_sock.close()
+            except Exception:
+                pass
+            logger.debug(f"TCP 连接关闭: {addr[0]}:{addr[1]}")
 
     # ------------------------------------------------------------------
     # 解析线程
