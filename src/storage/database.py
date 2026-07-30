@@ -56,6 +56,8 @@ class Database:
             conn.execute("PRAGMA cache_size=-65536")
             # 临时表存内存
             conn.execute("PRAGMA temp_store=MEMORY")
+            # 启用外键约束
+            conn.execute("PRAGMA foreign_keys=ON")
             self._local.conn = conn
         return conn
 
@@ -140,6 +142,7 @@ class Database:
             return True
         except Exception as e:
             logger.error(f"用户更新失败: {e}")
+            conn.rollback()
             return False
 
     def insert_vip_record(self, record: VipRecord) -> bool:
@@ -160,6 +163,7 @@ class Database:
             return True
         except Exception as e:
             logger.error(f"虚拟IP记录插入失败: {e}")
+            conn.rollback()
             return False
 
     # ------------------------------------------------------------------
@@ -490,7 +494,6 @@ class Database:
                     LIMIT 1
                 """, (row["user_name"],))
                 latest_vip = cursor.fetchone()
-
                 users.append(UserListItem(
                     user_name=row["user_name"],
                     display_name=row["display_name"],
@@ -663,7 +666,7 @@ class Database:
 
         except Exception as e:
             logger.error(f"数据库健康检查失败: {e}")
-            return {"status": "error", "error": str(e)}
+            return {"status": "error"}
 
     def close(self) -> None:
         """关闭当前线程的数据库连接"""

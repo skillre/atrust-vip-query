@@ -110,8 +110,13 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         logger.info(f"配置加载成功: {config_path}")
         return _config
         
+    except yaml.YAMLError as e:
+        logger.error(f"配置文件 YAML 格式错误: {e}")
+        logger.info("使用默认配置")
+        _config = AppConfig()
+        return _config
     except Exception as e:
-        logger.error(f"配置加载失败: {e}")
+        logger.warning(f"配置加载异常（可能某些字段类型不匹配）: {e}")
         logger.info("使用默认配置")
         _config = AppConfig()
         return _config
