@@ -69,3 +69,6 @@ static/
 test_*.py
 query_vip.py
 ANALYSIS_API_integration.md
+
+# pi agent 本地产物
+.pi-subagents/

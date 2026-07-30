@@ -67,7 +67,7 @@ async def get_system_status_full() -> ApiResponse:
         stats = syslog.get_stats() if hasattr(syslog, 'get_stats') else {}
         syslog_stats = SyslogStats(
             running=True,
-            listen_address=f"{getattr(syslog, 'host', '0.0.0.0')}:{getattr(syslog, 'port', 5514)}",
+            listen_address=f"{getattr(syslog, 'host', '0.0.0.0')}:{getattr(syslog, 'port', 514)}",
             **stats
         )
 
@@ -100,7 +100,7 @@ async def get_system_config() -> ApiResponse:
             atrust_timeout=raw.get("atrust", {}).get("timeout", 10),
             syslog_enabled=raw.get("syslog", {}).get("enabled", True),
             syslog_host=raw.get("syslog", {}).get("host", "0.0.0.0"),
-            syslog_port=raw.get("syslog", {}).get("port", 5514),
+            syslog_port=raw.get("syslog", {}).get("port", 514),
             syslog_protocol=raw.get("syslog", {}).get("protocol", "tcp"),
             syslog_workers=raw.get("syslog", {}).get("parse_workers", 4),
             syslog_batch_size=raw.get("syslog", {}).get("batch_size", 5000),

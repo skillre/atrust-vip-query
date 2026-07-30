@@ -177,7 +177,7 @@ class SystemConfig(BaseModel):
     atrust_timeout: int = 10
     syslog_enabled: bool = True
     syslog_host: str = "0.0.0.0"
-    syslog_port: int = 5514
+    syslog_port: int = 514
     syslog_protocol: str = "tcp"
     syslog_workers: int = 4
     syslog_batch_size: int = 5000

@@ -14,7 +14,7 @@
 [build]
 dockerfile = "Dockerfile"
 
-# ── HTTP 服务配置（FastAPI + Streamlit）──
+# ── HTTP 服务配置（FastAPI + React 静态前端）──
 [http_service]
 internal_port = 8000
 force_https = true
@@ -35,13 +35,23 @@ method = "GET"
 timeout = "2s"
 path = "/api/v1/system/health"
 
-# ── UDP 服务配置（Syslog 接收）──
+# ── Syslog 接收服务（协议由前端/config.yaml 选 UDP 或 TCP，两种都放行）──
+# 注意：Fly.io 的 UDP 服务需要为应用分配专用 IP：
+#   fly ips allocate-v4
 [[services]]
 internal_port = 514
 protocol = "udp"
 
 [[services.ports]]
 handlers = ["udp"]
+port = 514
+
+[[services]]
+internal_port = 514
+protocol = "tcp"
+
+[[services.ports]]
+handlers = []
 port = 514
 
 # ── 数据卷（持久化 SQLite 数据库）──

@@ -424,7 +424,7 @@ export default function SettingsPage() {
 									label="端口"
 									value={config.syslog_port}
 									onChange={(v) =>
-										updateField("syslog_port", parseInt(v) || 5514)
+										updateField("syslog_port", parseInt(v) || 514)
 									}
 									style={{ width: 120 }}
 								/>
