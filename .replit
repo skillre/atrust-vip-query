@@ -2,8 +2,8 @@
 # aTrust 用户虚拟IP查询系统 - Replit 配置
 # ============================================================
 
-# 运行配置
-run = "python app.py"
+# 运行配置 - 同时启动构建和后端服务
+run = "bash -c 'npm install && npm run build && cp -r dist/* static/ && python app.py'"
 
 # 解释器配置
 [interpreter]
@@ -19,4 +19,4 @@ PYTHONUNBUFFERED = "1"
 
 # 部署配置
 [deployment]
-run = ["sh", "-c", "pip install -r requirements.txt && python app.py"]
+run = ["sh", "-c", "pip install -r requirements.txt && npm install && npm run build && mkdir -p static && cp -r dist/* static/ && python app.py"]
