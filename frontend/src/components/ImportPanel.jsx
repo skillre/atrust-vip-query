@@ -240,7 +240,7 @@ export default function ImportPanel({ onImportComplete }) {
                       <circle cx="12" cy="12" r="10" />
                       <path d="M8 12l3 3 5-5" />
                     </svg>
-                    <strong style={{ color: 'var(--success)' }}>{importResult.message || '导入成功']}</strong>
+                    <strong style={{ color: 'var(--success)' }}>{importResult.message || '导入成功'}</strong>
                   </div>
                   <div className="stats-row" style={{ marginBottom: 0 }}>
                     <div className="stat-card">
@@ -268,7 +268,7 @@ export default function ImportPanel({ onImportComplete }) {
                       <circle cx="12" cy="12" r="10" />
                       <path d="M15 9l-6 6M9 9l6 6" />
                     </svg>
-                    <span style={{ color: 'var(--danger)' }}>{importResult.message || '导入失败')}</span>
+                    <span style={{ color: 'var(--danger)' }}>{importResult.message || '导入失败'}</span>
                   </div>
                 </div>
               )}
