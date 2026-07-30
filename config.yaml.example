@@ -38,7 +38,7 @@ database:
   path: "./data/vip_data.db"
   
   # 数据保留天数（自动清理过期记录）
-  retention_days: 90
+  retention_days: 14
 
 # Web 界面配置（Streamlit）
 web:

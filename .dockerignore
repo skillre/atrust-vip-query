@@ -1,0 +1,70 @@
+# ============================================================
+# Docker 构建上下文忽略配置
+# 目的：减小构建上下文、避免把敏感信息 / 运行时数据烤进镜像
+# ============================================================
+
+# ---- 版本控制 & IDE ----
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---- macOS ----
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ---- Python 运行时产物 ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+build/
+.venv/
+venv/
+env/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ---- 敏感配置（改由挂载注入，不烤进镜像）----
+config.yaml
+config.yml
+
+# ---- 运行时数据 / 日志（改由数据卷持久化）----
+data/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# ---- 前端：源码要保留，只忽略依赖和旧构建产物 ----
+frontend/node_modules/
+frontend/dist/
+static/
+
+# ---- 测试 & 调试脚本（不进生产镜像）----
+test_*.py
+query_vip.py
+
+# ---- 文档 / 设计稿 / 大体积资源 ----
+*.md
+docs/
+UI设计/
+UI原型/
+architecture.drawio
+architecture.png
+piolium/
+.pi-subagents/
+.replit
+fly.toml
+
+# ---- Docker 自身文件 ----
+Dockerfile
+.dockerignore
+docker-compose.yml

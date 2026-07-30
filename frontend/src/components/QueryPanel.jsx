@@ -7,6 +7,7 @@ export default function QueryPanel({ queryInput, queryType }) {
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
 	const [recentSearches, setRecentSearches] = useState([]);
+	const [fuzzy, setFuzzy] = useState(false); // 模糊匹配开关
 	const navigate = useNavigate();
 
 	useEffect(() => {
@@ -36,7 +37,7 @@ export default function QueryPanel({ queryInput, queryType }) {
 		setResult(null);
 		try {
 			const resp = await fetch(
-				`${API_BASE}/vip/query?name=${encodeURIComponent(name)}&source=all`,
+				`${API_BASE}/vip/query?name=${encodeURIComponent(name)}&source=all&fuzzy=${fuzzy}`,
 			);
 			const data = await resp.json();
 			if (data.code === 0 && data.data) {
@@ -56,10 +57,6 @@ export default function QueryPanel({ queryInput, queryType }) {
 		return name.charAt(0).toUpperCase();
 	}
 
-	function getDisplayName(result) {
-		return result.display_name || result.user_name;
-	}
-
 	function getDepartment(result) {
 		if (result.display_name && result.user_name) {
 			return result.display_name;
@@ -71,6 +68,34 @@ export default function QueryPanel({ queryInput, queryType }) {
 		return (
 			<div className="main-content">
 				<div className="main-left">
+					{/* Fuzzy Toggle */}
+					<div
+						style={{
+							marginBottom: 16,
+							display: "flex",
+							alignItems: "center",
+							gap: 8,
+						}}
+					>
+						<label
+							style={{
+								fontSize: 14,
+								color: "var(--text-secondary)",
+								display: "flex",
+								alignItems: "center",
+								gap: 6,
+								cursor: "pointer",
+							}}
+						>
+							<input
+								type="checkbox"
+								checked={fuzzy}
+								onChange={(e) => setFuzzy(e.target.checked)}
+								style={{ width: 16, height: 16 }}
+							/>
+							模糊匹配（可匹配多个用户）
+						</label>
+					</div>
 					<div className="card">
 						<div
 							className="card-body text-center"
@@ -108,6 +133,33 @@ export default function QueryPanel({ queryInput, queryType }) {
 		return (
 			<div className="main-content">
 				<div className="main-left">
+					<div
+						style={{
+							marginBottom: 16,
+							display: "flex",
+							alignItems: "center",
+							gap: 8,
+						}}
+					>
+						<label
+							style={{
+								fontSize: 14,
+								color: "var(--text-secondary)",
+								display: "flex",
+								alignItems: "center",
+								gap: 6,
+								cursor: "pointer",
+							}}
+						>
+							<input
+								type="checkbox"
+								checked={fuzzy}
+								onChange={(e) => setFuzzy(e.target.checked)}
+								style={{ width: 16, height: 16 }}
+							/>
+							模糊匹配（可匹配多个用户）
+						</label>
+					</div>
 					<div className="card">
 						<div
 							className="card-body text-center"
@@ -131,6 +183,33 @@ export default function QueryPanel({ queryInput, queryType }) {
 		return (
 			<div className="main-content">
 				<div className="main-left">
+					<div
+						style={{
+							marginBottom: 16,
+							display: "flex",
+							alignItems: "center",
+							gap: 8,
+						}}
+					>
+						<label
+							style={{
+								fontSize: 14,
+								color: "var(--text-secondary)",
+								display: "flex",
+								alignItems: "center",
+								gap: 6,
+								cursor: "pointer",
+							}}
+						>
+							<input
+								type="checkbox"
+								checked={fuzzy}
+								onChange={(e) => setFuzzy(e.target.checked)}
+								style={{ width: 16, height: 16 }}
+							/>
+							模糊匹配（可匹配多个用户）
+						</label>
+					</div>
 					<div className="card">
 						<div
 							className="card-body text-center"
@@ -151,6 +230,103 @@ export default function QueryPanel({ queryInput, queryType }) {
 	}
 
 	if (!result) return null;
+
+	// 模糊/批量查询命中多个用户：展开列表
+	if (Array.isArray(result.matches)) {
+		const matches = result.matches;
+		return (
+			<div className="main-content">
+				<div className="main-left">
+					<div
+						style={{
+							marginBottom: 16,
+							display: "flex",
+							alignItems: "center",
+							gap: 8,
+						}}
+					>
+						<label
+							style={{
+								fontSize: 14,
+								color: "var(--text-secondary)",
+								display: "flex",
+								alignItems: "center",
+								gap: 6,
+								cursor: "pointer",
+							}}
+						>
+							<input
+								type="checkbox"
+								checked={fuzzy}
+								onChange={(e) => setFuzzy(e.target.checked)}
+								style={{ width: 16, height: 16 }}
+							/>
+							模糊匹配（可匹配多个用户）
+						</label>
+					</div>
+					<div className="card">
+						<div className="card-header">
+							<span className="card-title">匹配到 {matches.length} 个用户</span>
+						</div>
+						{matches.length === 0 ? (
+							<div className="card-body text-center" style={{ padding: 40 }}>
+								<p className="text-muted">未找到匹配用户</p>
+							</div>
+						) : (
+							<>
+								<div className="table-header">
+									<span style={{ width: 140 }}>用户名</span>
+									<span style={{ width: 140 }}>显示名</span>
+									<span style={{ width: 150 }}>当前虚拟IP</span>
+									<span style={{ width: 150 }}>真实IP</span>
+									<span style={{ width: 180 }}>最近时间</span>
+								</div>
+								{matches.map((m, idx) => {
+									const v = m.history_vip;
+									return (
+										<div className="table-row" key={m.user_name || idx}>
+											<span style={{ width: 140, fontWeight: 500 }}>
+												{m.user_name}
+											</span>
+											<span className="text-secondary" style={{ width: 140 }}>
+												{m.display_name || "-"}
+											</span>
+											<span
+												className="col-accent"
+												style={{ width: 150, fontFamily: "var(--font-mono)" }}
+											>
+												{v ? v.virtual_ip : "-"}
+											</span>
+											<span
+												className="text-secondary"
+												style={{ width: 150, fontFamily: "var(--font-mono)" }}
+											>
+												{v && v.real_ip ? v.real_ip : "-"}
+											</span>
+											<span
+												className="text-muted"
+												style={{ width: 180, fontFamily: "var(--font-mono)" }}
+											>
+												{v && v.timestamp
+													? new Date(v.timestamp).toLocaleString("zh-CN")
+													: "-"}
+											</span>
+										</div>
+									);
+								})}
+							</>
+						)}
+					</div>
+				</div>
+				<div className="main-right">
+					<Sidebar
+						recentSearches={recentSearches}
+						onQuickAction={(path) => navigate(path)}
+					/>
+				</div>
+			</div>
+		);
+	}
 
 	const isOnline = result.is_online;
 	const vip = result.history_vip;

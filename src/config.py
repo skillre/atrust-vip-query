@@ -39,7 +39,7 @@ class SyslogConfig(BaseModel):
 class DatabaseConfig(BaseModel):
     """数据库配置"""
     path: str = "./data/vip_data.db"
-    retention_days: int = 90
+    retention_days: int = 14         # vip_records 历史表保留天数（最新态表不受此限）
     batch_size: int = 5000          # 批量写入条数
     flush_interval: float = 5.0     # 批量刷盘间隔（秒）
 

@@ -81,10 +81,41 @@
 | `.replit` | Replit 在线 IDE 配置 |
 | `Dockerfile` | Fly.io 容器化部署配置 |
 | `fly.toml` | Fly.io 应用配置 |
+| `docker-compose.yml` | 自建服务器/内网 一键部署 |
+| `.dockerignore` | Docker 构建上下文排除规则 |
+| `docker-entrypoint.sh` | 容器启动入口（首次补齐 config.yaml） |
 | `.gitignore` | Git 忽略规则 |
+
+## 数据库 Schema 变更记录（无迁移系统，需手动执行）
+
+> ⚠️ 本项目**无自动迁移系统**。schema 变更后，对已有的生产库需手动执行 DDL / 回填。
+> 新库（首次启动）无需处理，`database.py` 的 `_init_db` 会自动建表。
+
+### 2025 容量优化：新增最新态表 + 启用定时清理
+
+**背景**：`vip_records` 是 append-only 流水表，10w 用户规模下日增百万~千万条，而查询主路径只需“每人最新一条”。改为**双层表**：
+
+- `user_current_vip`（新增）：一人一行的最新态表，查询主路径只查它，容量恒定 = 用户数，永不清理。
+- `vip_records`（保留）：降级为有限历史表，供反查/历史/导出；保留窗口 90→**14 天**，由后台线程每 6 小时清理。
+
+**对已有生产库的升级步骤**（在云环境执行）：
+
+```bash
+# 1. 拉取新代码后，启动一次应用会自动建 `user_current_vip` 表（_init_db）
+#    但存量记录不会自动进新表 —— 需回填：
+python scripts/backfill_current_vip.py --db ./data/vip_data.db
+
+# 2. （可选）回填后可手动触发一次旧数据清理，立即释放超过 14 天的历史：
+#    （应用启动后也会自动清，此步仅用于立即生效）
+sqlite3 ./data/vip_data.db "DELETE FROM vip_records WHERE timestamp < datetime('now','-14 days'); VACUUM;"
+```
+
+> 回填脚本幂等，可重复运行；依赖 SQLite 3.25+ 窗口函数。
 
 ## 更新记录
 
 - 2025-01: 初始创建，记录开发约束
 - 2025-01: 创建 Replit、Fly.io 配置文件
 - 2025-01: 添加部署说明要求（用户无平台经验）
+- 2025: Docker 统一打包（docker-compose 一键部署 + 持久化数据卷）
+- 2025: 数据库容量优化（新增 user_current_vip 最新态表、保留 14 天、启用定时清理、支持模糊/批量查询）

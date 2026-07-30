@@ -28,11 +28,15 @@ ENV PYTHONDONTWRITEBYTECODE=1
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制项目文件
+# 复制项目文件（config.yaml / data / logs / 测试脚本等由 .dockerignore 排除）
 COPY . .
 
 # 从前端构建阶段拷入产物到 static/（app.py 从此目录提供 SPA）
 COPY --from=frontend-builder /frontend/dist/ ./static/
+
+# 入口脚本：首次启动补齐 config.yaml、确保运行目录存在
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # 创建数据和日志目录
 RUN mkdir -p data logs
@@ -48,5 +52,6 @@ EXPOSE 514/tcp
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/api/v1/system/health', timeout=3)" || exit 1
 
-# 启动命令
+# 入口 + 启动命令
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["python", "app.py"]

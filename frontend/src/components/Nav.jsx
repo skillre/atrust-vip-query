@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 
 const navItems = [
 	{ path: "/", label: "查询" },
+	{ path: "/batch", label: "批量查询" },
 	{ path: "/history", label: "历史记录" },
 	{ path: "/import", label: "数据导入" },
 	{ path: "/export", label: "数据导出" },

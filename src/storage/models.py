@@ -105,6 +105,12 @@ class ApiResponse(BaseModel):
     data: Optional[dict] = None
 
 
+class BatchQueryRequest(BaseModel):
+    """批量查询请求（多个用户名/显示名）"""
+    names: List[str] = []
+    fuzzy: bool = False
+
+
 class HealthData(BaseModel):
     """健康检查数据"""
     status: str = "healthy"
@@ -183,7 +189,7 @@ class SystemConfig(BaseModel):
     syslog_batch_size: int = 5000
     syslog_flush_interval: float = 5.0
     db_path: str = "./data/vip_data.db"
-    db_retention_days: int = 90
+    db_retention_days: int = 14
     db_batch_size: int = 5000
     db_flush_interval: float = 5.0
     api_host: str = "0.0.0.0"

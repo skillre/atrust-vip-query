@@ -1,0 +1,60 @@
+# ============================================================
+# aTrust 用户虚拟IP查询系统 - Docker Compose 一键部署
+# ============================================================
+# 使用方法：
+#   1. 首次部署前复制配置模板（可选，容器也会自动生成）：
+#        cp config.yaml.example config.yaml
+#      然后按需修改 config.yaml（aTrust API 密钥、运行模式等）。
+#   2. 一键启动：
+#        docker compose up -d
+#   3. 访问：http://<服务器IP>:8000
+#   4. 查看日志：docker compose logs -f
+#   5. 停止：docker compose down（数据保留在命名卷中）
+# ============================================================
+
+services:
+  atrust-vip:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: atrust-vip-query:latest
+    container_name: atrust-vip-query
+    restart: unless-stopped
+
+    ports:
+      # FastAPI 后端 + React 前端静态服务
+      - "8000:8000"
+      # Syslog 接收（UDP 和 TCP 都放行，实际用哪个由 config.yaml 的 syslog.protocol 决定）
+      - "514:514/udp"
+      - "514:514/tcp"
+
+    volumes:
+      # 配置文件：挂载进容器，实现持久化 + 通过仪表盘写回时不丢失
+      # （首次若本地无 config.yaml，请先执行 cp config.yaml.example config.yaml）
+      - ./config.yaml:/app/config.yaml
+      # SQLite 数据库持久化
+      - vip-data:/app/data
+      # 运行日志持久化
+      - vip-logs:/app/logs
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Asia/Shanghai
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import requests; requests.get('http://localhost:8000/api/v1/system/health', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+# 命名卷：数据库和日志持久化，docker compose down 不会删除
+volumes:
+  vip-data:
+  vip-logs:

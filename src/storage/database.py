@@ -8,7 +8,7 @@ import sqlite3
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
 
 from loguru import logger
 
@@ -98,6 +98,19 @@ class Database:
                 )
             """)
 
+            # 用户最新虚拟IP态表（一人一行，upsert 覆盖，永不清理）
+            # 查询主路径只依赖此表，容量恒定 = 用户数，不随日志量增长
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_current_vip (
+                    user_name TEXT PRIMARY KEY,
+                    virtual_ip TEXT NOT NULL,
+                    real_ip TEXT,
+                    event_type TEXT,
+                    timestamp DATETIME NOT NULL,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             # 创建索引
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_display_name ON users(display_name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)")
@@ -106,6 +119,8 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_vip_virtual_ip ON vip_records(virtual_ip)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_vip_timestamp ON vip_records(timestamp)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_vip_event_type ON vip_records(event_type)")
+            # 最新态表虚拟IP索引（反查/在线快照用）
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_current_virtual_ip ON user_current_vip(virtual_ip)")
 
             conn.commit()
             logger.info(f"数据库初始化完成（WAL 模式）: {self.db_path}")
@@ -283,6 +298,31 @@ class Database:
                 ])
                 records_ok = len(records)
 
+                # 同步更新最新态表：同一用户只保留本批中 timestamp 最晚的一条
+                # （先在内存按 user_name 折叠去重，再 upsert，避免同批重复 executemany）
+                latest_by_user: Dict[str, VipRecord] = {}
+                for r in records:
+                    prev = latest_by_user.get(r.user_name)
+                    if prev is None or r.timestamp >= prev.timestamp:
+                        latest_by_user[r.user_name] = r
+
+                if latest_by_user:
+                    conn.executemany("""
+                        INSERT INTO user_current_vip
+                            (user_name, virtual_ip, real_ip, event_type, timestamp, updated_at)
+                        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(user_name) DO UPDATE SET
+                            virtual_ip = excluded.virtual_ip,
+                            real_ip    = excluded.real_ip,
+                            event_type = excluded.event_type,
+                            timestamp  = excluded.timestamp,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE excluded.timestamp >= user_current_vip.timestamp
+                    """, [
+                        (r.user_name, r.virtual_ip, r.real_ip, r.event_type, r.timestamp.isoformat())
+                        for r in latest_by_user.values()
+                    ])
+
             conn.commit()
             return {"users_ok": users_ok, "records_ok": records_ok}
 
@@ -296,53 +336,88 @@ class Database:
     # ------------------------------------------------------------------
 
     def query_user_vip(self, name: str) -> Optional[VipQueryResult]:
-        """查询用户虚拟IP"""
+        """查询用户虚拟IP（精确匹配，命中多个时取第一个；保留向后兼容）"""
+        results = self.query_vips_multi([name], fuzzy=False)
+        return results[0] if results else None
+
+    def query_vips_multi(
+        self,
+        names: List[str],
+        fuzzy: bool = False,
+    ) -> List[VipQueryResult]:
+        """
+        批量/模糊查询用户虚拟IP
+
+        Args:
+            names: 一个或多个用户名/显示名
+            fuzzy: True 时对 user_name / display_name 做 LIKE 模糊匹配，
+                   False 时做等值精确匹配
+
+        Returns:
+            VipQueryResult 列表（多个匹配用户展开，按 user_name 去重）
+        """
         conn = self._get_connection()
+        results: List[VipQueryResult] = []
+        seen: set = set()
         try:
             cursor = conn.cursor()
 
-            cursor.execute("""
-                SELECT user_name, display_name FROM users
-                WHERE user_name = ? OR display_name = ?
-            """, (name, name))
-            user = cursor.fetchone()
+            for raw in names:
+                name = (raw or "").strip()
+                if not name:
+                    continue
 
-            if not user:
-                return None
+                if fuzzy:
+                    cursor.execute("""
+                        SELECT user_name, display_name FROM users
+                        WHERE user_name LIKE ? OR display_name LIKE ?
+                        ORDER BY user_name
+                    """, (f"%{name}%", f"%{name}%"))
+                else:
+                    cursor.execute("""
+                        SELECT user_name, display_name FROM users
+                        WHERE user_name = ? OR display_name = ?
+                        ORDER BY user_name
+                    """, (name, name))
 
-            user_name = user["user_name"]
-            display_name = user["display_name"]
+                users = cursor.fetchall()
+                for user in users:
+                    user_name = user["user_name"]
+                    if user_name in seen:
+                        continue
+                    seen.add(user_name)
 
-            cursor.execute("""
-                SELECT virtual_ip, real_ip, event_type, timestamp
-                FROM vip_records
-                WHERE user_name = ?
-                ORDER BY timestamp DESC
-                LIMIT 1
-            """, (user_name,))
-            latest = cursor.fetchone()
+                    # 从最新态表取当前虚拟IP（主键点查，恒定快）
+                    cursor.execute("""
+                        SELECT virtual_ip, real_ip, event_type, timestamp
+                        FROM user_current_vip
+                        WHERE user_name = ?
+                    """, (user_name,))
+                    latest = cursor.fetchone()
 
-            history_vip = None
-            if latest:
-                history_vip = VipRecord(
-                    user_name=user_name,
-                    virtual_ip=latest["virtual_ip"],
-                    real_ip=latest["real_ip"],
-                    event_type=latest["event_type"],
-                    timestamp=datetime.fromisoformat(latest["timestamp"])
-                )
+                    history_vip = None
+                    if latest:
+                        history_vip = VipRecord(
+                            user_name=user_name,
+                            virtual_ip=latest["virtual_ip"],
+                            real_ip=latest["real_ip"],
+                            event_type=latest["event_type"],
+                            timestamp=datetime.fromisoformat(latest["timestamp"])
+                        )
 
-            return VipQueryResult(
-                user_name=user_name,
-                display_name=display_name,
-                is_online=False,
-                online_vips=[],
-                history_vip=history_vip
-            )
+                    results.append(VipQueryResult(
+                        user_name=user_name,
+                        display_name=user["display_name"],
+                        is_online=False,
+                        online_vips=[],
+                        history_vip=history_vip
+                    ))
+
+            return results
 
         except Exception as e:
-            logger.error(f"查询用户虚拟IP失败: {e}")
-            return None
+            logger.error(f"批量查询用户虚拟IP失败: {e}")
+            return results
 
     def reverse_query_vip(self, ip: str, limit: int = 10) -> Optional[VipReverseResult]:
         """按虚拟IP反查用户"""

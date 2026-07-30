@@ -21,7 +21,7 @@ from src.collector.file_importer import get_file_importer
 
 # 上传文件大小限制（50MB）
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
-from src.storage.models import ApiResponse, HealthData, VipInfo
+from src.storage.models import ApiResponse, HealthData, VipInfo, BatchQueryRequest
 
 
 router = APIRouter()
@@ -34,7 +34,8 @@ router = APIRouter()
 @router.get("/vip/query")
 async def query_user_vip(
     name: str = Query(..., description="用户名或显示名"),
-    source: str = Query("realtime", description="数据来源: realtime(默认)、database、all")
+    source: str = Query("realtime", description="数据来源: realtime(默认)、database、all"),
+    fuzzy: bool = Query(False, description="是否对用户名/显示名做模糊匹配（仅数据库）")
 ) -> ApiResponse:
     """
     查询用户虚拟IP
@@ -43,6 +44,9 @@ async def query_user_vip(
     - realtime (默认): 先查 aTrust API，失败/无结果时查数据库
     - database: 只查本地数据库
     - all: 同时查询 API 和数据库，合并结果
+
+    fuzzy=True 时走数据库模糊匹配，可能命中多个用户，
+    结果以 {"matches": [...], "total": N} 形式返回。
     """
     from src.collector.api_collector import AtrustApiError
     
@@ -51,6 +55,18 @@ async def query_user_vip(
     api_result = None
     db_result = None
     api_error = None
+
+    # ---- 模糊模式：直接走数据库多结果查询 ----
+    if fuzzy:
+        matches = await asyncio.to_thread(db.query_vips_multi, [name], True)
+        db.log_search(name, "user", len(matches))
+        if not matches:
+            return ApiResponse(code=2001, message="未找到匹配用户", data={"matches": [], "total": 0})
+        return ApiResponse(
+            code=0,
+            message=f"success (database, fuzzy) 命中 {len(matches)} 个用户",
+            data={"matches": [m.model_dump() for m in matches], "total": len(matches)}
+        )
     
     # ---- 1. 尝试从 aTrust API 实时查询 ----
     if source in ("realtime", "all"):
@@ -119,6 +135,33 @@ async def query_user_vip(
         return ApiResponse(code=5001, message=f"API 查询失败且数据库无记录: {api_error}", data=None)
     
     return ApiResponse(code=2001, message="用户不存在", data=None)
+
+
+@router.post("/vip/query/batch")
+async def query_vips_batch(req: BatchQueryRequest) -> ApiResponse:
+    """
+    批量查询用户虚拟IP（仅本地数据库）
+
+    传入多个用户名/显示名，一次性返回每个的最新虚拟IP。
+    fuzzy=True 时每个关键词做模糊匹配（可能展开更多结果，自动按用户去重）。
+    """
+    names = [n for n in (req.names or []) if n and n.strip()]
+    if not names:
+        return ApiResponse(code=4000, message="请提供至少一个查询名称", data={"matches": [], "total": 0})
+
+    # 限制单次批量规模，避免滥用
+    if len(names) > 500:
+        return ApiResponse(code=4001, message="单次批量查询不能超过 500 个", data=None)
+
+    db = get_database()
+    matches = await asyncio.to_thread(db.query_vips_multi, names, req.fuzzy)
+    db.log_search(f"批量查询 {len(names)} 个", "user", len(matches))
+
+    return ApiResponse(
+        code=0,
+        message=f"success 命中 {len(matches)} 个用户",
+        data={"matches": [m.model_dump() for m in matches], "total": len(matches)}
+    )
 
 
 @router.get("/vip/online")

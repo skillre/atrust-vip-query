@@ -4,6 +4,7 @@ import Nav from "./components/Nav";
 import HeroSearch from "./components/HeroSearch";
 import StatsRow from "./components/StatsRow";
 import QueryPanel from "./components/QueryPanel";
+import BatchQueryPanel from "./components/BatchQueryPanel";
 import ReversePanel from "./components/ReversePanel";
 import HistoryPanel from "./components/HistoryPanel";
 import ImportPanel from "./components/ImportPanel";
@@ -79,6 +80,16 @@ export default function App() {
 								</div>
 							</section>
 						</>
+					}
+				/>
+				<Route
+					path="/batch"
+					element={
+						<section className="tabs-section">
+							<div className="container">
+								<BatchQueryPanel />
+							</div>
+						</section>
 					}
 				/>
 				<Route

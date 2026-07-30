@@ -6,6 +6,7 @@
 import sys
 import signal
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,6 +20,28 @@ from src.storage.database import get_database
 from src.api.routes import router as api_router
 from src.api.dashboard_routes import router as dashboard_router
 from src.collector.syslog_collector import get_syslog_receiver
+
+
+# ---- 后台定时清理（数据库保留策略）----
+_cleanup_stop = threading.Event()
+CLEANUP_INTERVAL_SECONDS = 6 * 3600  # 每 6 小时清一次
+
+
+def _cleanup_loop() -> None:
+    """后台守护线程：定期清理过期的 vip_records 历史记录。
+
+    最新态表 user_current_vip 不受此影响（查询主路径依赖它，不会被清）。
+    启动时先清一次，之后每 CLEANUP_INTERVAL_SECONDS 清一次。
+    """
+    db = get_database()
+    while not _cleanup_stop.is_set():
+        try:
+            deleted = db.cleanup_old_records()
+            logger.info(f"定时清理完成，删除过期历史记录 {deleted} 条（保留 {db.retention_days} 天）")
+        except Exception as e:
+            logger.error(f"定时清理异常: {e}")
+        # 可中断等待：关闭时能立即退出
+        _cleanup_stop.wait(CLEANUP_INTERVAL_SECONDS)
 
 
 def setup_logging():
@@ -77,12 +100,18 @@ async def lifespan(app):
     else:
         logger.info("aTrust API 未配置，运行在导入模式")
 
+    # 启动后台定时清理线程
+    cleanup_thread = threading.Thread(target=_cleanup_loop, name="db-cleanup", daemon=True)
+    cleanup_thread.start()
+    logger.info(f"数据库定时清理已启动（每 {CLEANUP_INTERVAL_SECONDS//3600} 小时，保留 {config.database.retention_days} 天）")
+
     logger.info("FastAPI 服务启动完成")
 
     yield  # ---- 运行中 ----
 
     # ---- 关闭 ----
     logger.info("FastAPI 服务关闭中...")
+    _cleanup_stop.set()  # 通知清理线程退出
     syslog = get_syslog_receiver()
     syslog.stop()
     logger.info("FastAPI 服务已关闭")
