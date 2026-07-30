@@ -30,12 +30,18 @@ class SyslogConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 514
     protocol: str = "udp"
+    buffer_size: int = 65536       # UDP 接收缓冲区大小
+    parse_workers: int = 4          # 解析线程数
+    batch_size: int = 5000          # 批量写入条数
+    flush_interval: float = 5.0     # 刷盘间隔（秒）
 
 
 class DatabaseConfig(BaseModel):
     """数据库配置"""
     path: str = "./data/vip_data.db"
     retention_days: int = 90
+    batch_size: int = 5000          # 批量写入条数
+    flush_interval: float = 5.0     # 批量刷盘间隔（秒）
 
 
 class WebConfig(BaseModel):
