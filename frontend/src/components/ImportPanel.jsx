@@ -1,16 +1,6 @@
 import { useState, useRef } from 'react'
 import API_BASE from '../config'
 
-function esc(str) {
-  if (str == null) return ''
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
@@ -174,7 +164,7 @@ export default function ImportPanel({ onImportComplete }) {
                   <circle cx="12" cy="12" r="10" />
                   <path d="M15 9l-6 6M9 9l6 6" />
                 </svg>
-                <span style={{ color: 'var(--danger)' }}>{esc(preview.error)}</span>
+                <span style={{ color: 'var(--danger)' }}>{preview.error}</span>
               </div>
             </div>
           )}
@@ -183,7 +173,7 @@ export default function ImportPanel({ onImportComplete }) {
             <div className="card" style={{ background: 'var(--surface-warm)' }}>
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <strong>{esc(preview.fileName)}</strong>
+                  <strong>{preview.fileName}</strong>
                   <span className="text-mono" style={{ color: 'var(--muted)', marginLeft: '8px' }}>
                     {formatSize(preview.fileSize)}
                   </span>
@@ -207,7 +197,7 @@ export default function ImportPanel({ onImportComplete }) {
                     <thead>
                       <tr>
                         {Object.keys(preview.preview[0]).map((c) => (
-                          <th key={c}>{esc(c)}</th>
+                          <th key={c}>{c}</th>
                         ))}
                       </tr>
                     </thead>
@@ -215,7 +205,7 @@ export default function ImportPanel({ onImportComplete }) {
                       {preview.preview.slice(0, 5).map((row, i) => (
                         <tr key={i}>
                           {Object.keys(row).map((c) => (
-                            <td key={c} className="mono">{esc(String(row[c] || ''))}</td>
+                            <td key={c} className="mono">{String(row[c] || '')}</td>
                           ))}
                         </tr>
                       ))}
@@ -250,7 +240,7 @@ export default function ImportPanel({ onImportComplete }) {
                       <circle cx="12" cy="12" r="10" />
                       <path d="M8 12l3 3 5-5" />
                     </svg>
-                    <strong style={{ color: 'var(--success)' }}>{esc(importResult.message || '导入成功')}</strong>
+                    <strong style={{ color: 'var(--success)' }}>{importResult.message || '导入成功']}</strong>
                   </div>
                   <div className="stats-row" style={{ marginBottom: 0 }}>
                     <div className="stat-card">
@@ -278,7 +268,7 @@ export default function ImportPanel({ onImportComplete }) {
                       <circle cx="12" cy="12" r="10" />
                       <path d="M15 9l-6 6M9 9l6 6" />
                     </svg>
-                    <span style={{ color: 'var(--danger)' }}>{esc(importResult.message || '导入失败')}</span>
+                    <span style={{ color: 'var(--danger)' }}>{importResult.message || '导入失败')}</span>
                   </div>
                 </div>
               )}

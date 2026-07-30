@@ -18,6 +18,9 @@ from src.storage.database import get_database
 from src.collector.api_collector import get_api_collector
 from src.collector.syslog_collector import get_syslog_receiver
 from src.collector.file_importer import get_file_importer
+
+# 上传文件大小限制（50MB）
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 from src.storage.models import ApiResponse, HealthData, VipInfo
 
 
@@ -168,7 +171,14 @@ async def upload_log_file(
         )
 
     try:
+        # 文件大小检查
         content = await file.read()
+        if len(content) > MAX_UPLOAD_SIZE:
+            return ApiResponse(
+                code=4006,
+                message=f"文件过大，最大支持 {MAX_UPLOAD_SIZE // (1024*1024)}MB",
+                data=None
+            )
 
         if not content:
             return ApiResponse(
@@ -199,7 +209,7 @@ async def upload_log_file(
         logger.error(f"文件导入失败: {e}")
         return ApiResponse(
             code=5000,
-            message=f"文件导入失败: {str(e)}",
+            message="文件导入失败，请检查文件格式后重试",
             data=None
         )
 
@@ -215,6 +225,14 @@ async def preview_log_file(
     """
     try:
         content = await file.read()
+
+        # 文件大小检查
+        if len(content) > MAX_UPLOAD_SIZE:
+            return ApiResponse(
+                code=4006,
+                message=f"文件过大，最大支持 {MAX_UPLOAD_SIZE // (1024*1024)}MB",
+                data=None
+            )
 
         if not content:
             return ApiResponse(code=4002, message="文件为空", data=None)
@@ -241,7 +259,8 @@ async def preview_log_file(
         )
 
     except Exception as e:
-        return ApiResponse(code=5000, message=f"预览失败: {str(e)}", data=None)
+        logger.error(f"文件预览失败: {e}")
+        return ApiResponse(code=5000, message="文件预览失败，请检查文件格式", data=None)
 
 
 # ------------------------------------------------------------------

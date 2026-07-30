@@ -137,8 +137,11 @@ def create_app():
             if full_path.startswith("api/"):
                 return None
 
-            # 尝试返回静态文件
-            file_path = static_dir / full_path
+            # 路径穿越防护：校验解析后路径仍在 static_dir 内
+            file_path = (static_dir / full_path).resolve()
+            if not str(file_path).startswith(str(static_dir.resolve())):
+                return FileResponse(str(index_file))
+
             if file_path.is_file():
                 return FileResponse(str(file_path))
 

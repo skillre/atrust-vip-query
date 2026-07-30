@@ -31,6 +31,8 @@ COLUMN_MAPPING = {
     "虚拟IP": "virtual_ip",
     "客户端源IP": "client_ip",
     "代理网关源IP": "gateway_ip",
+    "登录IP": "client_ip",  # 75列详细日志格式中用登录IP作为客户端源IP
+    "代理IP": "gateway_ip",
 
     # 时间
     "时间": "timestamp",
@@ -53,7 +55,6 @@ COLUMN_MAPPING = {
     # 位置信息
     "IP归属国家": "ip_country",
     "IP归属城市": "ip_city",
-    "登录IP": "login_ip",
 }
 
 # 标记为空值的字符串
@@ -337,10 +338,20 @@ class FileImporter:
 
         virtual_ip = _clean_value(row.get("虚拟IP"))
         timestamp = _parse_timestamp(_clean_value(row.get("时间")))
-        client_ip = _clean_value(row.get("客户端源IP"))
+        # 客户端源IP：优先使用"客户端源IP"列，回退到"登录IP"列
+        client_ip = _clean_value(row.get("客户端源IP")) or _clean_value(row.get("登录IP"))
 
+        # 如果既没有虚拟IP也没有客户端IP，仍然保留用户信息（仅跳过VIP记录）
         if not virtual_ip and not client_ip:
-            return None, None
+            user_info = UserInfo(
+                user_name=user_name,
+                display_name=_clean_value(row.get("显示名")),
+                phone=_clean_value(row.get("手机号码")),
+                email=_clean_value(row.get("电子邮箱")),
+                directory_name=_clean_value(row.get("所属用户目录")),
+                group_path=_clean_value(row.get("所属组织架构"))
+            )
+            return user_info, None
 
         user_info = UserInfo(
             user_name=user_name,
@@ -352,10 +363,10 @@ class FileImporter:
         )
 
         vip_record = None
-        if virtual_ip:
+        if virtual_ip or client_ip:
             vip_record = VipRecord(
                 user_name=user_name,
-                virtual_ip=virtual_ip,
+                virtual_ip=virtual_ip or "unknown",
                 real_ip=client_ip,
                 event_type="csv_import",
                 timestamp=timestamp or datetime.now()

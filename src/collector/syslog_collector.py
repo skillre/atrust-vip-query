@@ -242,11 +242,11 @@ class SyslogReceiver:
                 pass
             self._socket = None
 
-        # 等待所有线程结束
+        # 等待所有线程结束（write_loop 退出前会自行 flush 剩余缓冲）
         for t in self._threads:
             t.join(timeout=5)
 
-        # 最后一次刷盘
+        # 兜底：清理线程退出后可能残留的队列数据
         self._flush_to_db()
 
         self._threads.clear()
