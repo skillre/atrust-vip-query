@@ -59,18 +59,22 @@ async def lifespan(app):
     get_database()
     logger.info("数据库初始化完成")
 
-    # 检查运行模式
+    # 启动 Syslog 接收器（如果配置启用）
     config = get_config()
-    if config.atrust.host and config.atrust.api_id and config.atrust.api_key:
-        logger.info("aTrust API 已配置，启用实时查询模式")
-        syslog = get_syslog_receiver()
+    syslog = get_syslog_receiver()
+    if syslog.enabled:
         if syslog.start():
             logger.info("Syslog 接收器已启动")
         else:
             logger.warning("Syslog 接收器未启动")
     else:
+        logger.info("Syslog 接收器未启用（config.yaml 中 syslog.enabled=false）")
+
+    # 运行模式提示
+    if config.atrust.host and config.atrust.api_id and config.atrust.api_key:
+        logger.info("aTrust API 已配置，启用实时查询模式")
+    else:
         logger.info("aTrust API 未配置，运行在导入模式")
-        logger.info("请通过 Web 界面上传日志文件导入数据")
 
     logger.info("FastAPI 服务启动完成")
 
