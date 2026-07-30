@@ -24,7 +24,7 @@ MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 from src.storage.models import ApiResponse, HealthData, VipInfo
 
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter()
 
 
 # ------------------------------------------------------------------
