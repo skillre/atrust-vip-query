@@ -1,6 +1,6 @@
 # ============================================================
 # aTrust 用户虚拟IP查询系统 - 主程序入口
-# 启动所有服务：FastAPI + Streamlit + Syslog
+# 启动服务：FastAPI + React 前端 + Syslog
 # ============================================================
 
 import sys
@@ -83,11 +83,12 @@ async def lifespan(app):
     logger.info("FastAPI 服务已关闭")
 
 
-def start_fastapi():
-    """启动 FastAPI 服务"""
-    import uvicorn
-    from fastapi import FastAPI
+def create_app():
+    """创建 FastAPI 应用（包含静态文件服务）"""
+    from fastapi import FastAPI, Request
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse, RedirectResponse
 
     config = get_config()
 
@@ -108,8 +109,56 @@ def start_fastapi():
         allow_headers=["*"],
     )
 
-    # 注册路由
-    app.include_router(api_router)
+    # 注册 API 路由
+    app.include_router(api_router, prefix="/api/v1")
+
+    # React 构建产物目录
+    static_dir = Path(__file__).parent / "static"
+    index_file = static_dir / "index.html"
+
+    # 如果 React 构建产物存在，挂载静态文件服务
+    if static_dir.exists() and index_file.exists():
+        logger.info("检测到 React 前端构建产物，启用静态文件服务")
+
+        # 挂载 assets 目录（JS、CSS 等）
+        assets_dir = static_dir / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        # 根路径返回 React index.html
+        @app.get("/")
+        async def serve_react_root():
+            return FileResponse(str(index_file))
+
+        # 所有非 API 路径都返回 React index.html（支持前端路由）
+        @app.get("/{full_path:path}")
+        async def serve_react(request: Request, full_path: str):
+            # API 路径不拦截
+            if full_path.startswith("api/"):
+                return None
+
+            # 尝试返回静态文件
+            file_path = static_dir / full_path
+            if file_path.is_file():
+                return FileResponse(str(file_path))
+
+            # 其他路径返回 index.html（SPA 路由）
+            return FileResponse(str(index_file))
+
+        logger.info(f"React 前端地址: http://{config.api.host}:{config.api.port}")
+    else:
+        logger.warning("未检测到 React 前端构建产物，请先运行 npm run build")
+        logger.info(f"API 文档地址: http://localhost:{config.api.port}/docs")
+
+    return app
+
+
+def start_fastapi():
+    """启动 FastAPI 服务"""
+    import uvicorn
+
+    config = get_config()
+    app = create_app()
 
     # 启动 uvicorn
     logger.info(f"FastAPI 服务地址: http://{config.api.host}:{config.api.port}")
@@ -121,40 +170,6 @@ def start_fastapi():
         port=config.api.port,
         log_level="info"
     )
-
-
-def start_streamlit():
-    """启动 Streamlit 服务"""
-    import subprocess
-    import time
-
-    config = get_config()
-
-    # Streamlit 启动命令
-    cmd = [
-        sys.executable, "-m", "streamlit", "run",
-        str(Path(__file__).parent / "src" / "web" / "app.py"),
-        "--server.port", str(config.web.port),
-        "--server.address", config.web.host,
-        "--server.headless", "true",
-        "--browser.gatherUsageStats", "false"
-    ]
-
-    logger.info(f"Streamlit 服务地址: http://{config.web.host}:{config.web.port}")
-
-    # 在新线程中启动 Streamlit
-    def run_streamlit():
-        try:
-            subprocess.run(cmd, check=True)
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Streamlit 启动失败: {e}")
-        except Exception as e:
-            logger.error(f"Streamlit 异常: {e}")
-
-    thread = threading.Thread(target=run_streamlit, daemon=True)
-    thread.start()
-
-    return thread
 
 
 def signal_handler(signum, frame):
@@ -189,17 +204,9 @@ def main():
     # 打印配置信息
     config = get_config()
     logger.info(f"FastAPI 端口: {config.api.port}")
-    logger.info(f"Streamlit 端口: {config.web.port}")
     logger.info(f"Syslog 端口: {config.syslog.port}")
     logger.info(f"数据库路径: {config.database.path}")
     logger.info(f"批量大小: {config.database.batch_size}")
-
-    # 启动 Streamlit（在后台线程）
-    streamlit_thread = start_streamlit()
-
-    # 等待一下让 Streamlit 启动
-    import time
-    time.sleep(2)
 
     # 启动 FastAPI（主进程）
     start_fastapi()

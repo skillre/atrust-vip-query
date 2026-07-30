@@ -2,49 +2,20 @@
 # aTrust 用户虚拟IP查询系统 - Replit 配置
 # ============================================================
 
-# 运行配置
-run = "python app.py"
-modules = ["python-3.11"]
+run = "bash -c 'cd frontend && npm install && npm run build && cd .. && mkdir -p static && cp -r frontend/dist/* static/ && python app.py'"
+modules = ["nodejs-20"]
 
-# 解释器配置
 [interpreter]
 channel = "python-3.11"
 
-# 包管理
 [nix]
 channel = "stable-24_05"
 
-# 环境变量
 [env]
 PYTHONUNBUFFERED = "1"
 
-# 部署配置
 [deployment]
-run = ["sh", "-c", "pip install -r requirements.txt && python app.py"]
-
-[workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start application"
-
-[[workflows.workflow]]
-name = "Start application"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python app.py"
-waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
+run = ["sh", "-c", "pip install -r requirements.txt && cd frontend && npm install && npm run build && cd .. && mkdir -p static && cp -r frontend/dist/* static/ && python app.py"]
 
 [[ports]]
 localPort = 5000
