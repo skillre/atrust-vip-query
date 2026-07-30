@@ -20,7 +20,7 @@ aTrust 用户虚拟IP查询系统 —— 轻量级 MVP，用于查询深信服 a
 | --- | --- |
 | 后端 | Python 3.10+ / FastAPI / uvicorn |
 | 数据 | SQLite（标准库 sqlite3，无 ORM）+ Pydantic 2 模型 |
-| 采集 | Syslog（TCP/UDP，可配置，默认 TCP 5514）/ requests（aTrust OpenAPI）/ pandas+openpyxl（文件导入） |
+| 采集 | Syslog（标准端口 514，协议 UDP/TCP 由前端配置）/ requests（aTrust OpenAPI）/ pandas+openpyxl（文件导入） |
 | 前端 | React 19 / Vite / react-router-dom |
 | 日志 | loguru |
 
