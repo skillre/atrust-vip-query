@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.config import load_config, get_config, ensure_directories
 from src.storage.database import get_database
 from src.api.routes import router as api_router
+from src.api.dashboard_routes import router as dashboard_router
 from src.collector.syslog_collector import get_syslog_receiver
 
 
@@ -115,6 +116,7 @@ def create_app():
 
     # 注册 API 路由
     app.include_router(api_router, prefix="/api/v1")
+    app.include_router(dashboard_router, prefix="/api/v1")
 
     # React 构建产物目录
     static_dir = Path(__file__).parent / "static"

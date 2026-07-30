@@ -70,6 +70,9 @@ async def query_user_vip(
                         ]
                     break
 
+    # 记录查询日志
+    db.log_search(name, "user", 1 if result else 0)
+
     return ApiResponse(
         code=0,
         message="success",
@@ -92,6 +95,9 @@ async def reverse_query_vip(
     result = await asyncio.to_thread(db.reverse_query_vip, ip, limit)
     if not result or not result.records:
         return ApiResponse(code=2002, message="虚拟IP不存在", data=None)
+
+    # 记录查询日志
+    db.log_search(ip, "ip", len(result.records) if result else 0)
 
     return ApiResponse(
         code=0,
@@ -193,6 +199,16 @@ async def upload_log_file(
         result = await asyncio.to_thread(importer.import_file, content, filename)
 
         if result["success"]:
+            # 记录导入日志
+            db = get_database()
+            db.log_import(
+                filename=filename,
+                file_size=len(content),
+                record_count=result.get("total", 0),
+                success_count=result.get("success", 0),
+                fail_count=result.get("failed", 0),
+                status="success" if result.get("failed", 0) == 0 else "partial"
+            )
             return ApiResponse(
                 code=0,
                 message=result["message"],

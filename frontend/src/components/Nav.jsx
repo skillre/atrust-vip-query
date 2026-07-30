@@ -1,54 +1,53 @@
-import { useState } from 'react'
+import { Link, useLocation } from "react-router-dom";
 
-export default function Nav({ activeTab, onTabChange, systemStatus }) {
-  return (
-    <header className="topnav">
-      <div className="container topnav-inner">
-        <span className="logo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
-          aTrust 虚拟IP查询
-        </span>
-        <nav>
-          <a
-            href="#"
-            className={activeTab === 'query' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); onTabChange('query') }}
-          >
-            查询
-          </a>
-          <a
-            href="#"
-            className={activeTab === 'history' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); onTabChange('history') }}
-          >
-            历史记录
-          </a>
-          <a
-            href="#"
-            className={activeTab === 'import' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); onTabChange('import') }}
-          >
-            数据导入
-          </a>
-          <a
-            href="#"
-            className={activeTab === 'export' ? 'active' : ''}
-            onClick={(e) => { e.preventDefault(); onTabChange('export') }}
-          >
-            数据导出
-          </a>
-        </nav>
-        <div className="flex items-center gap-3">
-          <span className={`badge ${systemStatus === 'healthy' ? 'badge-online' : systemStatus === 'checking' ? 'badge-neutral' : 'badge-offline'}`}>
-            <span className="badge-dot"></span>
-            {systemStatus === 'healthy' ? '系统正常' : systemStatus === 'checking' ? '检查中...' : '未连接'}
-          </span>
-        </div>
-      </div>
-    </header>
-  )
+const navItems = [
+	{ path: "/", label: "查询" },
+	{ path: "/history", label: "历史记录" },
+	{ path: "/import", label: "数据导入" },
+	{ path: "/export", label: "数据导出" },
+	{ path: "/settings", label: "系统配置" },
+];
+
+export default function Nav({ systemStatus }) {
+	const location = useLocation();
+
+	return (
+		<header className="topnav">
+			<div className="container topnav-inner">
+				<Link to="/" className="logo" style={{ textDecoration: "none" }}>
+					<svg
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.6"
+					>
+						<path d="M12 2l-9 5v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12v-5l-9-5z" />
+					</svg>
+					<span>aTrust</span>
+					<span className="logo-sub">虚拟IP查询</span>
+				</Link>
+				<nav className="nav-links">
+					{navItems.map((item) => (
+						<Link
+							key={item.path}
+							to={item.path}
+							className={`nav-link ${location.pathname === item.path ? "active" : ""}`}
+						>
+							{item.label}
+						</Link>
+					))}
+				</nav>
+				<div
+					className={`status-badge ${systemStatus === "healthy" ? "healthy" : systemStatus === "checking" ? "checking" : "error"}`}
+				>
+					<span className="status-dot" />
+					{systemStatus === "healthy"
+						? "系统正常"
+						: systemStatus === "checking"
+							? "检查中..."
+							: "未连接"}
+				</div>
+			</div>
+		</header>
+	);
 }

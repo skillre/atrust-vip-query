@@ -1,48 +1,127 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import API_BASE from "../config";
 
 export default function QueryPanel({ queryInput, queryType }) {
-	const [loading, setLoading] = useState(false);
 	const [result, setResult] = useState(null);
-	const [error, setError] = useState(null);
+	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState("");
+	const [recentSearches, setRecentSearches] = useState([]);
+	const navigate = useNavigate();
 
 	useEffect(() => {
-		if (queryInput && queryType === "user") {
-			performSearch(queryInput);
+		fetchRecent();
+	}, []);
+
+	useEffect(() => {
+		if (queryInput && queryType !== "ip") {
+			doQuery(queryInput);
 		}
 	}, [queryInput, queryType]);
 
-	async function performSearch(name) {
-		setLoading(true);
-		setError(null);
-		setResult(null);
+	async function fetchRecent() {
+		try {
+			const resp = await fetch(`${API_BASE}/search/recent?limit=5`);
+			const data = await resp.json();
+			if (data.code === 0 && data.data) {
+				setRecentSearches(data.data.searches || []);
+			}
+		} catch {}
+	}
 
+	async function doQuery(name) {
+		if (!name) return;
+		setLoading(true);
+		setError("");
+		setResult(null);
 		try {
 			const resp = await fetch(
-				`${API_BASE}/vip/query?name=${encodeURIComponent(name)}`,
+				`${API_BASE}/vip/query?name=${encodeURIComponent(name)}&source=all`,
 			);
 			const data = await resp.json();
-
 			if (data.code === 0 && data.data) {
 				setResult(data.data);
 			} else {
-				setError(data.message || "未找到用户");
+				setError(data.message || "查询失败");
 			}
-		} catch (err) {
-			setError("无法连接到 API 服务，请确保后端已启动");
+		} catch (e) {
+			setError("网络错误，请检查后端服务");
 		} finally {
 			setLoading(false);
 		}
 	}
 
+	function getInitial(name) {
+		if (!name) return "?";
+		return name.charAt(0).toUpperCase();
+	}
+
+	function getDisplayName(result) {
+		return result.display_name || result.user_name;
+	}
+
+	function getDepartment(result) {
+		if (result.display_name && result.user_name) {
+			return result.display_name;
+		}
+		return "";
+	}
+
+	if (!queryInput) {
+		return (
+			<div className="main-content">
+				<div className="main-left">
+					<div className="card">
+						<div
+							className="card-body text-center"
+							style={{ padding: "60px 20px" }}
+						>
+							<svg
+								width="48"
+								height="48"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="var(--text-muted)"
+								strokeWidth="1.5"
+								style={{ margin: "0 auto 16px" }}
+							>
+								<circle cx="11" cy="11" r="8" />
+								<path d="M21 21l-4.35-4.35" />
+							</svg>
+							<p style={{ color: "var(--text-secondary)", fontSize: "15px" }}>
+								在上方搜索框输入用户名或IP地址开始查询
+							</p>
+						</div>
+					</div>
+				</div>
+				<div className="main-right">
+					<Sidebar
+						recentSearches={recentSearches}
+						onQuickAction={(path) => navigate(path)}
+					/>
+				</div>
+			</div>
+		);
+	}
+
 	if (loading) {
 		return (
-			<div className="tab-panel active">
-				<div className="text-center mt-6">
-					<div className="spinner" style={{ margin: "0 auto" }}></div>
-					<p className="mt-4" style={{ color: "var(--muted)" }}>
-						正在查询...
-					</p>
+			<div className="main-content">
+				<div className="main-left">
+					<div className="card">
+						<div
+							className="card-body text-center"
+							style={{ padding: "60px 20px" }}
+						>
+							<p style={{ color: "var(--text-secondary)" }}>查询中...</p>
+						</div>
+					</div>
+				</div>
+				<div className="main-right">
+					<Sidebar
+						recentSearches={recentSearches}
+						onQuickAction={(path) => navigate(path)}
+					/>
 				</div>
 			</div>
 		);
@@ -50,142 +129,384 @@ export default function QueryPanel({ queryInput, queryType }) {
 
 	if (error) {
 		return (
-			<div className="tab-panel active">
-				<div className="empty-state">
-					<svg
-						className="empty-icon"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						strokeWidth="1.5"
-					>
-						<circle cx="12" cy="12" r="10" />
-						<path d="M15 9l-6 6M9 9l6 6" />
-					</svg>
-					<div className="empty-title">{error}</div>
-					<div className="empty-desc">请检查输入是否正确，或尝试其他搜索词</div>
+			<div className="main-content">
+				<div className="main-left">
+					<div className="card">
+						<div
+							className="card-body text-center"
+							style={{ padding: "60px 20px" }}
+						>
+							<p style={{ color: "var(--error)" }}>{error}</p>
+						</div>
+					</div>
+				</div>
+				<div className="main-right">
+					<Sidebar
+						recentSearches={recentSearches}
+						onQuickAction={(path) => navigate(path)}
+					/>
 				</div>
 			</div>
 		);
 	}
 
-	if (!result) {
-		return (
-			<div className="tab-panel active">
-				<div id="query-results">
-					<div className="empty-state">
-						<svg
-							className="empty-icon"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="1.5"
-						>
-							<circle cx="11" cy="11" r="8" />
-							<path d="M21 21l-4.35-4.35" />
-						</svg>
-						<div className="empty-title">输入查询条件开始搜索</div>
-						<div className="empty-desc">
-							在上方搜索框中输入用户名或虚拟IP地址，快速获取查询结果
-						</div>
-					</div>
-				</div>
-			</div>
-		);
-	}
+	if (!result) return null;
 
 	const isOnline = result.is_online;
-	const onlineVips = result.online_vips || [];
-	const historyVip = result.history_vip;
+	const vip = result.history_vip;
+	const onlineVip =
+		result.online_vips && result.online_vips.length > 0
+			? result.online_vips[0]
+			: null;
+	const displayVip =
+		onlineVip ||
+		(vip
+			? {
+					ip: vip.virtual_ip,
+					real_ip: vip.real_ip,
+					last_login_time: vip.timestamp,
+				}
+			: null);
 
 	return (
-		<div className="tab-panel active">
-			<div className="result-card">
-				<div className="result-header">
-					<div className="result-user">
-						<span className="result-user-name">{result.user_name}</span>
-						{result.display_name && (
-							<span className="result-user-display">
-								({result.display_name})
-							</span>
+		<div className="main-content">
+			<div className="main-left">
+				{/* 用户结果卡 */}
+				<div className="card">
+					<div className="user-result-header">
+						<div className="user-info">
+							<div className="avatar">{getInitial(result.user_name)}</div>
+							<div>
+								<div className="user-name">{result.user_name}</div>
+								<div className="user-meta">{getDepartment(result)}</div>
+							</div>
+						</div>
+						{isOnline && (
+							<div className="badge badge-online">
+								<span className="status-dot" style={{ width: 8, height: 8 }} />
+								在线
+							</div>
 						)}
 					</div>
-					<span
-						className={`badge ${isOnline ? "badge-online" : "badge-offline"}`}
-					>
-						<span className="badge-dot"></span>
-						{isOnline ? "在线" : "离线"}
-					</span>
-				</div>
-				<div className="result-body">
-					{onlineVips.length > 0 && (
-						<div className="result-section">
-							<div className="result-section-title">
-								<svg
-									width="14"
-									height="14"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									strokeWidth="2"
+					<div className="card-body">
+						{displayVip ? (
+							<div className="vip-section">
+								<div
+									style={{
+										display: "flex",
+										alignItems: "center",
+										gap: 8,
+										marginBottom: 8,
+									}}
 								>
-									<circle cx="12" cy="12" r="10" />
-									<path d="M8 12l3 3 5-5" />
-								</svg>
-								在线虚拟IP
-							</div>
-							{onlineVips.map((vip, i) => (
-								<div className="vip-item" key={i}>
-									<span className="vip-ip">{vip.ip}</span>
-									{vip.real_ip && (
-										<span className="vip-meta">真实IP: {vip.real_ip}</span>
-									)}
-									{vip.last_login_time && (
-										<span className="vip-meta">
-											登录: {vip.last_login_time}
-										</span>
-									)}
+									<svg
+										width="16"
+										height="16"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="var(--online)"
+										strokeWidth="2"
+									>
+										<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+										<polyline points="22 4 12 14.01 9 11.01" />
+									</svg>
+									<span
+										style={{
+											fontSize: 13,
+											fontWeight: 600,
+											color: "var(--text-secondary)",
+										}}
+									>
+										在线虚拟IP
+									</span>
 								</div>
-							))}
-						</div>
-					)}
+								<div className="vip-card">
+									<div>
+										<div className="vip-field-label">虚拟IP</div>
+										<div className="vip-field-value large">{displayVip.ip}</div>
+									</div>
+									<div>
+										<div className="vip-field-label">真实IP</div>
+										<div className="vip-field-value normal">
+											{displayVip.real_ip || "-"}
+										</div>
+									</div>
+									<div>
+										<div className="vip-field-label">登录时间</div>
+										<div className="vip-field-value small">
+											{displayVip.last_login_time
+												? new Date(displayVip.last_login_time).toLocaleString(
+														"zh-CN",
+													)
+												: "-"}
+										</div>
+									</div>
+								</div>
+							</div>
+						) : (
+							<p
+								style={{
+									color: "var(--text-muted)",
+									textAlign: "center",
+									padding: 20,
+								}}
+							>
+								暂无虚拟IP记录
+							</p>
+						)}
 
-					{historyVip && (
-						<div className="result-section">
-							<div className="result-section-title">
+						<div className="quick-actions mt-4">
+							<button
+								className="quick-action-btn"
+								onClick={() => navigate("/history")}
+							>
 								<svg
-									width="14"
-									height="14"
 									viewBox="0 0 24 24"
 									fill="none"
 									stroke="currentColor"
 									strokeWidth="2"
 								>
 									<circle cx="12" cy="12" r="10" />
-									<polyline points="12,6 12,12 16,14" />
+									<polyline points="12 6 12 12 16 14" />
 								</svg>
-								最近历史记录
-							</div>
-							<div className="vip-item">
-								<span className="vip-ip">{historyVip.virtual_ip}</span>
-								{historyVip.real_ip && (
-									<span className="vip-meta">真实IP: {historyVip.real_ip}</span>
-								)}
-								<span className="vip-meta">{historyVip.timestamp}</span>
-								<span className="badge badge-info">
-									{historyVip.event_type}
-								</span>
-							</div>
+								查看历史
+							</button>
+							<button
+								className="quick-action-btn"
+								onClick={() => navigate("/export")}
+							>
+								<svg
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+								>
+									<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+									<polyline points="7 10 12 15 17 10" />
+									<line x1="12" y1="15" x2="12" y2="3" />
+								</svg>
+								导出记录
+							</button>
 						</div>
-					)}
-
-					{!isOnline && onlineVips.length === 0 && !historyVip && (
-						<div className="empty-state" style={{ padding: "32px" }}>
-							<div className="empty-desc">暂无虚拟IP记录</div>
-						</div>
-					)}
+					</div>
 				</div>
+
+				{/* 历史IP分配表格 */}
+				{result.history_vip && (
+					<div className="card">
+						<div className="card-header">
+							<span className="card-title">历史IP分配记录</span>
+							<span className="text-xs text-muted">共 1 条记录</span>
+						</div>
+						<div className="table-header">
+							<span style={{ width: 160 }}>虚拟IP</span>
+							<span style={{ width: 160 }}>真实IP</span>
+							<span style={{ width: 120 }}>事件类型</span>
+							<span style={{ width: 180 }}>时间</span>
+						</div>
+						<div className="table-row">
+							<span
+								className="col-accent"
+								style={{ width: 160, fontFamily: "var(--font-mono)" }}
+							>
+								{result.history_vip.virtual_ip}
+							</span>
+							<span
+								className="text-secondary"
+								style={{ width: 160, fontFamily: "var(--font-mono)" }}
+							>
+								{result.history_vip.real_ip || "-"}
+							</span>
+							<span style={{ width: 120 }}>
+								<span
+									className={`badge ${result.history_vip.event_type === "上线" ? "badge-online" : "badge-offline"}`}
+								>
+									{result.history_vip.event_type || "-"}
+								</span>
+							</span>
+							<span
+								className="text-muted"
+								style={{ width: 180, fontFamily: "var(--font-mono)" }}
+							>
+								{result.history_vip.timestamp
+									? new Date(result.history_vip.timestamp).toLocaleString(
+											"zh-CN",
+										)
+									: "-"}
+							</span>
+						</div>
+					</div>
+				)}
+			</div>
+
+			<div className="main-right">
+				<Sidebar
+					recentSearches={recentSearches}
+					onQuickAction={(path) => navigate(path)}
+				/>
 			</div>
 		</div>
+	);
+}
+
+function Sidebar({ recentSearches, onQuickAction }) {
+	return (
+		<>
+			{/* 最近查询 */}
+			<div className="card">
+				<div className="card-header">
+					<span className="card-title">最近查询</span>
+					<span
+						className="text-xs"
+						style={{ color: "var(--accent)", cursor: "pointer" }}
+					>
+						查看全部
+					</span>
+				</div>
+				{recentSearches.length === 0 ? (
+					<div className="card-body text-center">
+						<p className="text-muted text-xs">暂无查询记录</p>
+					</div>
+				) : (
+					recentSearches.map((s) => (
+						<div key={s.id} className="recent-item">
+							<div className="avatar avatar-sm">
+								{s.query_text.charAt(0).toUpperCase()}
+							</div>
+							<div style={{ flex: 1, minWidth: 0 }}>
+								<div
+									className="recent-name"
+									style={{
+										overflow: "hidden",
+										textOverflow: "ellipsis",
+										whiteSpace: "nowrap",
+									}}
+								>
+									{s.query_text}
+								</div>
+								<div className="recent-meta">
+									{s.query_type === "ip" ? "IP反查" : "用户查询"} ·{" "}
+									{s.created_at
+										? new Date(s.created_at).toLocaleString("zh-CN", {
+												month: "numeric",
+												day: "numeric",
+												hour: "2-digit",
+												minute: "2-digit",
+											})
+										: ""}
+								</div>
+							</div>
+						</div>
+					))
+				)}
+			</div>
+
+			{/* 快捷操作 */}
+			<div className="card">
+				<div className="card-header">
+					<span className="card-title">快捷操作</span>
+				</div>
+				<div className="quick-grid">
+					<div className="quick-item" onClick={() => onQuickAction("/import")}>
+						<div
+							className="quick-icon"
+							style={{
+								background: "var(--accent-rgba)",
+								color: "var(--accent)",
+							}}
+						>
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+							>
+								<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+								<polyline points="17 8 12 3 7 8" />
+								<line x1="12" y1="3" x2="12" y2="15" />
+							</svg>
+						</div>
+						<div>
+							<div style={{ fontSize: 13, fontWeight: 500 }}>数据导入</div>
+							<div className="text-xs text-muted">上传日志文件</div>
+						</div>
+					</div>
+					<div className="quick-item" onClick={() => onQuickAction("/export")}>
+						<div
+							className="quick-icon"
+							style={{
+								background: "var(--success-rgba)",
+								color: "var(--success)",
+							}}
+						>
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+							>
+								<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+								<polyline points="7 10 12 15 17 10" />
+								<line x1="12" y1="15" x2="12" y2="3" />
+							</svg>
+						</div>
+						<div>
+							<div style={{ fontSize: 13, fontWeight: 500 }}>数据导出</div>
+							<div className="text-xs text-muted">导出CSV文件</div>
+						</div>
+					</div>
+					<div className="quick-item" onClick={() => onQuickAction("/")}>
+						<div
+							className="quick-icon"
+							style={{
+								background: "var(--warning-rgba)",
+								color: "var(--warning)",
+							}}
+						>
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+							>
+								<circle cx="11" cy="11" r="8" />
+								<path d="M21 21l-4.35-4.35" />
+							</svg>
+						</div>
+						<div>
+							<div style={{ fontSize: 13, fontWeight: 500 }}>IP反查</div>
+							<div className="text-xs text-muted">按虚拟IP查用户</div>
+						</div>
+					</div>
+					<div
+						className="quick-item"
+						onClick={() => onQuickAction("/settings")}
+					>
+						<div
+							className="quick-icon"
+							style={{
+								background: "var(--accent-rgba)",
+								color: "var(--accent-light)",
+							}}
+						>
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+							>
+								<line x1="18" y1="20" x2="18" y2="10" />
+								<line x1="12" y1="20" x2="12" y2="4" />
+								<line x1="6" y1="20" x2="6" y2="14" />
+							</svg>
+						</div>
+						<div>
+							<div style={{ fontSize: 13, fontWeight: 500 }}>系统状态</div>
+							<div className="text-xs text-muted">查看运行状态</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</>
 	);
 }

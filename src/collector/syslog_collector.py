@@ -276,6 +276,12 @@ class SyslogReceiver:
             f"错误: {stats['parse_errors'] + stats['write_errors']}"
         )
 
+    def restart(self) -> bool:
+        """重启 Syslog 接收器"""
+        logger.info("正在重启 Syslog 接收器...")
+        self.stop()
+        return self.start()
+
     # ------------------------------------------------------------------
     # 收包线程（UDP）
     # ------------------------------------------------------------------

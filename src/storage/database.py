@@ -37,6 +37,8 @@ class Database:
         self.retention_days = config.database.retention_days
         self._local = threading.local()  # 线程本地存储，每个线程独立连接
         self._init_db()
+        self.init_search_logs_table()
+        self.init_import_logs_table()
 
     # ------------------------------------------------------------------
     # 连接管理
@@ -667,6 +669,210 @@ class Database:
         except Exception as e:
             logger.error(f"数据库健康检查失败: {e}")
             return {"status": "error"}
+
+    # ------------------------------------------------------------------
+    # 仪表盘统计
+    # ------------------------------------------------------------------
+
+    def get_dashboard_stats(self) -> dict:
+        """获取仪表盘统计数据"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT COUNT(*) as count FROM users")
+            user_count = cursor.fetchone()["count"]
+
+            cursor.execute("""
+                SELECT COUNT(*) as count FROM vip_records
+                WHERE timestamp >= date('now')
+            """)
+            today_count = cursor.fetchone()["count"]
+
+            cursor.execute("""
+                SELECT MAX(created_at) as last_sync FROM vip_records
+            """)
+            row = cursor.fetchone()
+            last_sync = row["last_sync"] if row and row["last_sync"] else ""
+
+            return {
+                "online_users": min(user_count, today_count),
+                "today_queries": today_count,
+                "vip_pool_size": user_count,
+                "last_sync": last_sync
+            }
+        except Exception as e:
+            logger.error(f"获取仪表盘统计失败: {e}")
+            return {"online_users": 0, "today_queries": 0, "vip_pool_size": 0, "last_sync": ""}
+
+    # ------------------------------------------------------------------
+    # 查询日志
+    # ------------------------------------------------------------------
+
+    def init_search_logs_table(self) -> None:
+        """初始化查询日志表"""
+        conn = self._get_connection()
+        try:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS search_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    query_text TEXT NOT NULL,
+                    query_type TEXT NOT NULL,
+                    result_count INTEGER DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_search_logs_created ON search_logs(created_at)")
+            conn.commit()
+        except Exception as e:
+            logger.error(f"初始化查询日志表失败: {e}")
+
+    def log_search(self, query_text: str, query_type: str, result_count: int = 0) -> None:
+        """记录查询日志"""
+        conn = self._get_connection()
+        try:
+            conn.execute("""
+                INSERT INTO search_logs (query_text, query_type, result_count)
+                VALUES (?, ?, ?)
+            """, (query_text, query_type, result_count))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"记录查询日志失败: {e}")
+
+    def get_recent_searches(self, limit: int = 10) -> list:
+        """获取最近查询记录"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, query_text, query_type, result_count, created_at
+                FROM search_logs
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
+            return [
+                {
+                    "id": row["id"],
+                    "query_text": row["query_text"],
+                    "query_type": row["query_type"],
+                    "result_count": row["result_count"],
+                    "created_at": row["created_at"]
+                }
+                for row in cursor.fetchall()
+            ]
+        except Exception as e:
+            logger.error(f"获取最近查询失败: {e}")
+            return []
+
+    # ------------------------------------------------------------------
+    # 导入日志
+    # ------------------------------------------------------------------
+
+    def init_import_logs_table(self) -> None:
+        """初始化导入日志表"""
+        conn = self._get_connection()
+        try:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS import_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    filename TEXT NOT NULL,
+                    file_size INTEGER DEFAULT 0,
+                    record_count INTEGER DEFAULT 0,
+                    success_count INTEGER DEFAULT 0,
+                    fail_count INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'pending',
+                    error_message TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    completed_at DATETIME
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_import_logs_created ON import_logs(created_at)")
+            conn.commit()
+        except Exception as e:
+            logger.error(f"初始化导入日志表失败: {e}")
+
+    def log_import(self, filename: str, file_size: int = 0, record_count: int = 0,
+                   success_count: int = 0, fail_count: int = 0, status: str = "success",
+                   error_message: Optional[str] = None) -> int:
+        """记录导入日志"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO import_logs (filename, file_size, record_count, success_count, fail_count, status, error_message, completed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (filename, file_size, record_count, success_count, fail_count, status, error_message))
+            conn.commit()
+            return cursor.lastrowid or 0
+        except Exception as e:
+            logger.error(f"记录导入日志失败: {e}")
+            return 0
+
+    def get_import_history(self, limit: int = 20) -> list:
+        """获取导入历史"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, filename, file_size, record_count, success_count, fail_count,
+                       status, error_message, created_at, completed_at
+                FROM import_logs
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
+            return [
+                {
+                    "id": row["id"],
+                    "filename": row["filename"],
+                    "file_size": row["file_size"],
+                    "record_count": row["record_count"],
+                    "success_count": row["success_count"],
+                    "fail_count": row["fail_count"],
+                    "status": row["status"],
+                    "error_message": row["error_message"],
+                    "created_at": row["created_at"],
+                    "completed_at": row["completed_at"]
+                }
+                for row in cursor.fetchall()
+            ]
+        except Exception as e:
+            logger.error(f"获取导入历史失败: {e}")
+            return []
+
+    # ------------------------------------------------------------------
+    # 系统状态全量
+    # ------------------------------------------------------------------
+
+    def get_database_stats(self) -> dict:
+        """获取数据库统计"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT COUNT(*) as count FROM users")
+            user_count = cursor.fetchone()["count"]
+
+            cursor.execute("SELECT COUNT(*) as count FROM vip_records")
+            record_count = cursor.fetchone()["count"]
+
+            cursor.execute("""
+                SELECT COUNT(*) as count FROM vip_records
+                WHERE created_at >= date('now')
+            """)
+            today_imports = cursor.fetchone()["count"]
+
+            import os
+            db_size = os.path.getsize(str(self.db_path)) if self.db_path.exists() else 0
+
+            return {
+                "user_count": user_count,
+                "record_count": record_count,
+                "today_imports": today_imports,
+                "db_size_mb": round(db_size / (1024 * 1024), 1)
+            }
+        except Exception as e:
+            logger.error(f"获取数据库统计失败: {e}")
+            return {"user_count": 0, "record_count": 0, "today_imports": 0, "db_size_mb": 0}
 
     def close(self) -> None:
         """关闭当前线程的数据库连接"""

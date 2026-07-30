@@ -1,24 +1,24 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect } from "react";
 
 export default function Toast({ message, type, onClose }) {
-  const [show, setShow] = useState(false)
+	const [visible, setVisible] = useState(false);
 
-  useEffect(() => {
-    if (message) {
-      setShow(true)
-      const timer = setTimeout(() => {
-        setShow(false)
-        if (onClose) onClose()
-      }, 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [message, onClose])
+	useEffect(() => {
+		if (message) {
+			setVisible(true);
+			const timer = setTimeout(() => {
+				setVisible(false);
+				if (onClose) onClose();
+			}, 3000);
+			return () => clearTimeout(timer);
+		}
+	}, [message, onClose]);
 
-  if (!message) return null
+	if (!message) return null;
 
-  return (
-    <div className={`toast toast-${type || 'info'} ${show ? 'show' : ''}`} role="alert" aria-live="polite">
-      {message}
-    </div>
-  )
+	return (
+		<div className={`toast ${type || "info"}`} role="alert" aria-live="polite">
+			{message}
+		</div>
+	);
 }

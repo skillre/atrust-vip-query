@@ -223,6 +223,19 @@ class ApiCollector:
         except Exception:
             return "unavailable"
 
+    def test_connection(self) -> bool:
+        """
+        测试 aTrust 设备连接
+        
+        Returns:
+            True 表示连接成功，False 表示连接失败
+        """
+        try:
+            status = self.health_check()
+            return status == "available"
+        except Exception:
+            return False
+
 
 # 全局采集器实例
 _collector: Optional[ApiCollector] = None

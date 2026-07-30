@@ -1,281 +1,322 @@
-import { useState, useRef } from 'react'
-import API_BASE from '../config'
-
-function formatSize(bytes) {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
+import { useState, useEffect, useRef } from "react";
+import API_BASE from "../config";
 
 export default function ImportPanel({ onImportComplete }) {
-  const [dragOver, setDragOver] = useState(false)
-  const [preview, setPreview] = useState(null)
-  const [importResult, setImportResult] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [pendingFile, setPendingFile] = useState(null)
-  const fileInputRef = useRef(null)
+	const [file, setFile] = useState(null);
+	const [uploading, setUploading] = useState(false);
+	const [dragOver, setDragOver] = useState(false);
+	const [importHistory, setImportHistory] = useState([]);
+	const fileInputRef = useRef(null);
 
-  function handleDragOver(e) {
-    e.preventDefault()
-    setDragOver(true)
-  }
+	useEffect(() => {
+		fetchImportHistory();
+	}, []);
 
-  function handleDragLeave() {
-    setDragOver(false)
-  }
+	async function fetchImportHistory() {
+		try {
+			const resp = await fetch(`${API_BASE}/import/history?limit=10`);
+			const data = await resp.json();
+			if (data.code === 0 && data.data) {
+				setImportHistory(data.data.logs || []);
+			}
+		} catch {}
+	}
 
-  function handleDrop(e) {
-    e.preventDefault()
-    setDragOver(false)
-    if (e.dataTransfer.files.length > 0) {
-      handleFile(e.dataTransfer.files[0])
-    }
-  }
+	function handleDragOver(e) {
+		e.preventDefault();
+		setDragOver(true);
+	}
 
-  function handleFileSelect(e) {
-    if (e.target.files.length > 0) {
-      handleFile(e.target.files[0])
-    }
-  }
+	function handleDragLeave() {
+		setDragOver(false);
+	}
 
-  async function handleFile(file) {
-    const allowed = ['.csv', '.xlsx', '.xls']
-    const ext = '.' + file.name.split('.').pop().toLowerCase()
-    if (!allowed.includes(ext)) {
-      return
-    }
+	function handleDrop(e) {
+		e.preventDefault();
+		setDragOver(false);
+		const droppedFile = e.dataTransfer.files[0];
+		if (droppedFile) {
+			setFile(droppedFile);
+		}
+	}
 
-    setPreview(null)
-    setImportResult(null)
-    setLoading(true)
+	function handleFileSelect(e) {
+		const selectedFile = e.target.files[0];
+		if (selectedFile) {
+			setFile(selectedFile);
+		}
+	}
 
-    const formData = new FormData()
-    formData.append('file', file)
+	async function handleUpload() {
+		if (!file) return;
+		setUploading(true);
+		try {
+			const formData = new FormData();
+			formData.append("file", file);
+			const resp = await fetch(`${API_BASE}/import/upload`, {
+				method: "POST",
+				body: formData,
+			});
+			const data = await resp.json();
+			if (data.code === 0) {
+				onImportComplete?.();
+				setFile(null);
+				fetchImportHistory();
+			} else {
+				alert(data.message || "导入失败");
+			}
+		} catch (e) {
+			alert("上传失败，请检查网络");
+		} finally {
+			setUploading(false);
+		}
+	}
 
-    try {
-      const resp = await fetch(`${API_BASE}/import/preview`, {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await resp.json()
+	function formatFileSize(bytes) {
+		if (!bytes) return "-";
+		if (bytes < 1024) return bytes + " B";
+		if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+		return (bytes / 1048576).toFixed(1) + " MB";
+	}
 
-      if (data.code === 0 && data.data) {
-        setPreview({ ...data.data, fileName: file.name, fileSize: file.size })
-        setPendingFile(file)
-      } else {
-        setPreview({ error: data.message || '解析失败' })
-      }
-    } catch (err) {
-      setPreview({ error: '文件解析失败，请检查文件格式' })
-    } finally {
-      setLoading(false)
-    }
-  }
+	function formatTime(ts) {
+		if (!ts) return "-";
+		try {
+			return new Date(ts).toLocaleString("zh-CN");
+		} catch {
+			return ts;
+		}
+	}
 
-  async function importFile() {
-    if (!pendingFile) return
+	return (
+		<div>
+			<div className="page-header">
+				<div>
+					<h1 className="page-title">数据导入</h1>
+					<p className="page-subtitle">
+						上传 aTrust 导出的日志文件，系统将自动解析并导入虚拟IP数据
+					</p>
+				</div>
+			</div>
 
-    setImporting(true)
-    setImportResult(null)
+			<div className="import-layout">
+				<div className="import-left">
+					{/* 上传区 */}
+					<div
+						className={`upload-zone ${dragOver ? "drag-over" : ""}`}
+						onDragOver={handleDragOver}
+						onDragLeave={handleDragLeave}
+						onDrop={handleDrop}
+						onClick={() => fileInputRef.current?.click()}
+					>
+						<div className="upload-icon">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+							>
+								<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+								<polyline points="17 8 12 3 7 8" />
+								<line x1="12" y1="3" x2="12" y2="15" />
+							</svg>
+						</div>
+						{file ? (
+							<div style={{ textAlign: "center" }}>
+								<p style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+									{file.name}
+								</p>
+								<p className="text-xs text-muted mt-2">
+									{formatFileSize(file.size)}
+								</p>
+							</div>
+						) : (
+							<>
+								<p style={{ color: "var(--text-primary)" }}>
+									拖拽文件到此处，或点击选择文件
+								</p>
+								<p className="text-xs text-muted">
+									支持 CSV、Excel 格式，最大 50MB
+								</p>
+							</>
+						)}
+						<input
+							ref={fileInputRef}
+							type="file"
+							accept=".csv,.xlsx,.xls"
+							onChange={handleFileSelect}
+							style={{ display: "none" }}
+						/>
+					</div>
 
-    const formData = new FormData()
-    formData.append('file', pendingFile)
+					<button
+						className="btn btn-primary"
+						style={{ alignSelf: "center" }}
+						onClick={handleUpload}
+						disabled={!file || uploading}
+					>
+						{uploading ? "导入中..." : "选择文件导入"}
+					</button>
 
-    try {
-      const resp = await fetch(`${API_BASE}/import/upload`, {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await resp.json()
+					{/* 导入历史 */}
+					<div>
+						<h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+							最近导入记录
+						</h3>
+						<div className="card">
+							<div className="table-header">
+								<span style={{ flex: 1, minWidth: 0, padding: "0 16px" }}>
+									文件名
+								</span>
+								<span style={{ width: 140, padding: "0 16px" }}>导入条数</span>
+								<span style={{ width: 120, padding: "0 16px" }}>状态</span>
+								<span style={{ width: 180, padding: "0 16px" }}>导入时间</span>
+							</div>
+							{importHistory.length === 0 ? (
+								<div className="card-body text-center">
+									<p className="text-muted text-xs">暂无导入记录</p>
+								</div>
+							) : (
+								importHistory.map((log) => (
+									<div key={log.id} className="table-row">
+										<span
+											className="text-mono"
+											style={{
+												flex: 1,
+												minWidth: 0,
+												overflow: "hidden",
+												textOverflow: "ellipsis",
+												whiteSpace: "nowrap",
+												padding: "0 16px",
+											}}
+										>
+											{log.filename}
+										</span>
+										<span
+											className="text-secondary text-mono"
+											style={{ width: 140, padding: "0 16px" }}
+										>
+											{(log.record_count || 0).toLocaleString()}
+										</span>
+										<span style={{ width: 120, padding: "0 16px" }}>
+											<span
+												className={`badge ${log.status === "success" ? "badge-success" : log.status === "partial" ? "badge-warning" : "badge-offline"}`}
+											>
+												{log.status === "success"
+													? "成功"
+													: log.status === "partial"
+														? "部分成功"
+														: log.status === "failed"
+															? "失败"
+															: log.status}
+											</span>
+										</span>
+										<span
+											className="text-muted text-mono"
+											style={{ width: 180, padding: "0 16px" }}
+										>
+											{formatTime(log.created_at)}
+										</span>
+									</div>
+								))
+							)}
+						</div>
+					</div>
+				</div>
 
-      if (data.code === 0 && data.data) {
-        setImportResult({ success: true, ...data.data })
-        if (onImportComplete) onImportComplete()
-      } else {
-        setImportResult({ success: false, message: data.message || '导入失败' })
-      }
-    } catch (err) {
-      setImportResult({ success: false, message: '导入失败，请稍后重试' })
-    } finally {
-      setImporting(false)
-    }
-  }
+				<div className="import-right">
+					{/* 导入说明 */}
+					<div className="card">
+						<div className="card-header">
+							<div className="card-title">
+								<svg
+									width="16"
+									height="16"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="var(--accent)"
+									strokeWidth="2"
+								>
+									<circle cx="12" cy="12" r="10" />
+									<line x1="12" y1="16" x2="12" y2="12" />
+									<line x1="12" y1="8" x2="12.01" y2="8" />
+								</svg>
+								导入说明
+							</div>
+						</div>
+						<div
+							className="card-body"
+							style={{ display: "flex", flexDirection: "column", gap: 14 }}
+						>
+							<div className="step-item">
+								<div className="step-num">1</div>
+								<span className="step-text">
+									登录 aTrust 控制台，进入日志导出页面
+								</span>
+							</div>
+							<div className="step-item">
+								<div className="step-num">2</div>
+								<span className="step-text">
+									选择时间范围，导出访问日志为 CSV 格式
+								</span>
+							</div>
+							<div className="step-item">
+								<div className="step-num">3</div>
+								<span className="step-text">上传导出的文件到本系统</span>
+							</div>
+							<div className="step-item">
+								<div className="step-num">4</div>
+								<span className="step-text">系统自动解析并导入虚拟IP数据</span>
+							</div>
+						</div>
+					</div>
 
-  return (
-    <div className="tab-panel active">
-      <div className="card">
-        <div className="card-header">
-          <div className="card-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-              <polyline points="17,8 12,3 7,8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-            数据导入
-          </div>
-          <span className="badge badge-info">CSV / Excel</span>
-        </div>
-
-        <div
-          className={`import-zone ${dragOver ? 'dragover' : ''}`}
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          role="button"
-          tabIndex={0}
-          aria-label="点击或拖拽文件到此处上传"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              fileInputRef.current?.click()
-            }
-          }}
-        >
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept=".csv,.xlsx,.xls"
-            style={{ display: 'none' }}
-            onChange={handleFileSelect}
-          />
-          <svg className="import-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-            <polyline points="17,8 12,3 7,8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          <div className="import-text">点击或拖拽文件到此处上传</div>
-          <div className="import-hint">支持 CSV、XLSX、XLS 格式，单个文件最大 50MB</div>
-        </div>
-
-        <div className="mt-6">
-          {loading && (
-            <div className="text-center mt-4">
-              <div className="spinner" style={{ margin: '0 auto' }}></div>
-              <p className="mt-4" style={{ color: 'var(--muted)' }}>正在解析文件...</p>
-            </div>
-          )}
-
-          {!loading && preview && preview.error && (
-            <div className="card" style={{ borderColor: 'var(--danger)' }}>
-              <div className="flex items-center gap-3">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M15 9l-6 6M9 9l6 6" />
-                </svg>
-                <span style={{ color: 'var(--danger)' }}>{preview.error}</span>
-              </div>
-            </div>
-          )}
-
-          {!loading && preview && !preview.error && (
-            <div className="card" style={{ background: 'var(--surface-warm)' }}>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <strong>{preview.fileName}</strong>
-                  <span className="text-mono" style={{ color: 'var(--muted)', marginLeft: '8px' }}>
-                    {formatSize(preview.fileSize)}
-                  </span>
-                </div>
-                <span className="badge badge-online">解析成功</span>
-              </div>
-              <div className="stats-row" style={{ marginBottom: 0 }}>
-                <div className="stat-card">
-                  <div className="stat-value">{(preview.total_rows || 0).toLocaleString()}</div>
-                  <div className="stat-label">总行数</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-value">{(preview.columns || []).length}</div>
-                  <div className="stat-label">列数</div>
-                </div>
-              </div>
-
-              {preview.preview && preview.preview.length > 0 && (
-                <div style={{ overflowX: 'auto', marginTop: '16px' }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        {Object.keys(preview.preview[0]).map((c) => (
-                          <th key={c}>{c}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview.preview.slice(0, 5).map((row, i) => (
-                        <tr key={i}>
-                          {Object.keys(row).map((c) => (
-                            <td key={c} className="mono">{String(row[c] || '')}</td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              <div className="flex gap-3 mt-4" style={{ justifyContent: 'flex-end' }}>
-                <button
-                  className="btn btn-primary"
-                  onClick={importFile}
-                  disabled={importing}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                    <polyline points="17,8 12,3 7,8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
-                  {importing ? '导入中...' : '开始导入'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {!loading && importResult && (
-            <div className="mt-4">
-              {importResult.success ? (
-                <div className="card" style={{ borderColor: 'var(--success)' }}>
-                  <div className="flex items-center gap-3 mb-4">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M8 12l3 3 5-5" />
-                    </svg>
-                    <strong style={{ color: 'var(--success)' }}>{importResult.message || '导入成功'}</strong>
-                  </div>
-                  <div className="stats-row" style={{ marginBottom: 0 }}>
-                    <div className="stat-card">
-                      <div className="stat-value">{(importResult.total_rows || 0).toLocaleString()}</div>
-                      <div className="stat-label">总行数</div>
-                    </div>
-                    <div className="stat-card">
-                      <div className="stat-value">{(importResult.imported || 0).toLocaleString()}</div>
-                      <div className="stat-label">成功导入</div>
-                    </div>
-                    <div className="stat-card">
-                      <div className="stat-value">{(importResult.skipped || 0).toLocaleString()}</div>
-                      <div className="stat-label">跳过</div>
-                    </div>
-                    <div className="stat-card">
-                      <div className="stat-value">{(importResult.errors || 0).toLocaleString()}</div>
-                      <div className="stat-label">错误</div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="card" style={{ borderColor: 'var(--danger)' }}>
-                  <div className="flex items-center gap-3">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M15 9l-6 6M9 9l6 6" />
-                    </svg>
-                    <span style={{ color: 'var(--danger)' }}>{importResult.message || '导入失败'}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
+					{/* 支持格式 */}
+					<div className="card">
+						<div className="card-header">
+							<div className="card-title">
+								<svg
+									width="16"
+									height="16"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="var(--success)"
+									strokeWidth="2"
+								>
+									<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+									<polyline points="14 2 14 8 20 8" />
+									<line x1="16" y1="13" x2="8" y2="13" />
+									<line x1="16" y1="17" x2="8" y2="17" />
+								</svg>
+								支持的文件格式
+							</div>
+						</div>
+						<div
+							className="card-body"
+							style={{ display: "flex", flexDirection: "column", gap: 12 }}
+						>
+							<div className="format-tag">
+								<span className="format-ext csv">.csv</span>
+								<span className="text-secondary text-xs">
+									aTrust 导出的 CSV 日志文件
+								</span>
+							</div>
+							<div className="format-tag">
+								<span className="format-ext xlsx">.xlsx</span>
+								<span className="text-secondary text-xs">
+									Excel 格式的数据文件
+								</span>
+							</div>
+							<div className="format-tag">
+								<span className="format-ext xls">.xls</span>
+								<span className="text-secondary text-xs">
+									旧版 Excel 格式文件
+								</span>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
 }
