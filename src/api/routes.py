@@ -34,50 +34,158 @@ router = APIRouter()
 @router.get("/vip/query")
 async def query_user_vip(
     name: str = Query(..., description="用户名或显示名"),
-    source: str = Query("all", description="数据来源: online, history, all")
+    source: str = Query("realtime", description="数据来源: realtime(默认)、database、all")
 ) -> ApiResponse:
     """
     查询用户虚拟IP
-
-    根据用户名或显示名查询虚拟IP，优先查询在线用户，再查询历史记录。
+    
+    查询逻辑（按 source 参数）：
+    - realtime (默认): 先查 aTrust API，失败/无结果时查数据库
+    - database: 只查本地数据库
+    - all: 同时查询 API 和数据库，合并结果
     """
+    from src.collector.api_collector import AtrustApiError
+    
     db = get_database()
+    collector = get_api_collector()
+    api_result = None
+    db_result = None
+    api_error = None
+    
+    # ---- 1. 尝试从 aTrust API 实时查询 ----
+    if source in ("realtime", "all"):
+        def _query_from_api():
+            # 先尝试按显示名查询
+            users = collector.client.query_user_by_display_name(name)
+            if users:
+                return users, "displayName"
+            # 再尝试按用户名查询
+            users = collector.client.query_user_by_name(name)
+            if users:
+                return users, "name"
+            return [], None
+        
+        try:
+            online_users, match_type = await asyncio.to_thread(_query_from_api)
+            
+            if online_users:
+                # 取第一个匹配的用户
+                user = online_users[0]
+                vips = user.get("vips", [])
+                
+                from src.storage.models import VipQueryResult
+                api_result = VipQueryResult(
+                    user_name=user.get("name", ""),
+                    display_name=user.get("displayName"),
+                    is_online=True,
+                    online_vips=[
+                        VipInfo(ip=v.get("ip", ""), real_ip=user.get("remoteIp"))
+                        for v in vips
+                    ] if vips else []
+                )
+        except AtrustApiError as e:
+            api_error = str(e)
+            logger.warning(f"aTrust API 查询失败: {e}")
+        except Exception as e:
+            api_error = str(e)
+            logger.warning(f"aTrust API 查询异常: {e}")
+    
+    # ---- 2. 如果 API 查询成功，直接返回 ----
+    if api_result and api_result.online_vips:
+        db.log_search(name, "user", len(api_result.online_vips))
+        return ApiResponse(code=0, message="success (realtime)", data=api_result.model_dump())
+    
+    # ---- 3. 查询本地数据库 ----
+    if source in ("realtime", "database", "all"):
+        db_result = await asyncio.to_thread(db.query_user_vip, name)
+    
+    # ---- 4. 合并结果 ----
+    if api_result:
+        # API 有结果（用户在线，但可能没虚拟IP），合并数据库历史
+        if db_result:
+            api_result.history_vip = db_result.history_vip
+        db.log_search(name, "user", len(api_result.online_vips) if api_result.online_vips else 0)
+        return ApiResponse(code=0, message="success (realtime)", data=api_result.model_dump())
+    
+    if db_result:
+        # 数据库有结果，但用户不在线
+        db_result.is_online = False
+        db.log_search(name, "user", 1)
+        return ApiResponse(code=0, message="success (database)", data=db_result.model_dump())
+    
+    # ---- 5. 都没有结果 ----
+    if api_error:
+        # API 出错，数据库也没有，返回 API 错误提示
+        return ApiResponse(code=5001, message=f"API 查询失败且数据库无记录: {api_error}", data=None)
+    
+    return ApiResponse(code=2001, message="用户不存在", data=None)
 
-    result = await asyncio.to_thread(db.query_user_vip, name)
-    if not result:
-        return ApiResponse(code=2001, message="用户不存在", data=None)
 
-    # 如果需要查询在线状态，调用 aTrust API
-    if source in ("online", "all"):
-        collector = get_api_collector()
+@router.get("/vip/online")
+async def query_online_user_vip(
+    name: str = Query(..., description="用户名或显示名")
+) -> ApiResponse:
+    """
+    实时查询在线用户虚拟IP
 
-        def _get_online():
-            return collector.client.get_online_users()
-
-        online_users = await asyncio.to_thread(_get_online)
-
-        if online_users:
-            for user in online_users:
-                if user.get("name") == result.user_name:
-                    result.is_online = True
-                    vip = user.get("virtualIp")
-                    if vip:
-                        result.online_vips = [
-                            VipInfo(
-                                ip=vip,
-                                real_ip=user.get("realIp")
-                            )
-                        ]
-                    break
-
-    # 记录查询日志
-    db.log_search(name, "user", 1 if result else 0)
-
-    return ApiResponse(
-        code=0,
-        message="success",
-        data=result.model_dump()
-    )
+    直接调用 aTrust API 查询在线用户，无需依赖本地数据库。
+    """
+    from src.collector.api_collector import AtrustApiError
+    
+    collector = get_api_collector()
+    
+    def _query_online():
+        # 先尝试按显示名查询
+        users = collector.client.query_user_by_display_name(name)
+        if users:
+            return users, "displayName"
+        
+        # 再尝试按用户名查询
+        users = collector.client.query_user_by_name(name)
+        if users:
+            return users, "name"
+        
+        return [], None
+    
+    try:
+        users, match_type = await asyncio.to_thread(_query_online)
+        
+        if not users:
+            return ApiResponse(code=2001, message=f"未找到在线用户: {name}", data=None)
+        
+        # 构造返回数据
+        result_list = []
+        for user in users:
+            vips = user.get("vips", [])
+            vip_list = [v.get("ip", "") for v in vips] if vips else []
+            
+            result_list.append({
+                "name": user.get("name", ""),
+                "displayName": user.get("displayName", ""),
+                "remoteIp": user.get("remoteIp", ""),
+                "os": user.get("os", ""),
+                "lastLoginTime": user.get("lastLoginTime", ""),
+                "isOnline": True,
+                "vips": vip_list,
+                "matchType": match_type
+            })
+        
+        # 记录查询日志
+        db = get_database()
+        db.log_search(name, "user", len(result_list))
+        
+        return ApiResponse(
+            code=0,
+            message="success",
+            data={"users": result_list, "total": len(result_list)}
+        )
+        
+    except AtrustApiError as e:
+        logger.error(f"aTrust API 查询失败: {e}")
+        return ApiResponse(code=5001, message=f"API 查询失败: {str(e)}", data=None)
+    except Exception as e:
+        logger.error(f"查询异常: {e}")
+        return ApiResponse(code=5000, message=f"查询异常: {str(e)}", data=None)
 
 
 @router.get("/vip/reverse")

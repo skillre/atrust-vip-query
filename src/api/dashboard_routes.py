@@ -192,16 +192,73 @@ async def reset_system_config() -> ApiResponse:
 
 @router.post("/system/test-atrust")
 async def test_atrust_connection() -> ApiResponse:
-    """测试 aTrust 设备连接"""
-    from src.collector.api_collector import get_api_collector
-    collector = get_api_collector()
+    """
+    测试 aTrust 设备连接
+    
+    使用当前配置文件中的配置进行测试，而不是启动时的配置。
+    """
+    import yaml
+    from src.collector.api_collector import AtrustClient, AtrustApiError
+    
     try:
-        result = await asyncio.to_thread(collector.test_connection)
-        if result:
-            return ApiResponse(code=0, message="连接成功", data={"connected": True})
+        # 读取当前配置文件
+        config_path = "./config.yaml"
+        with open(config_path, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+        
+        host = raw.get("atrust", {}).get("host", "")
+        api_id = raw.get("atrust", {}).get("api_id", "")
+        api_key = raw.get("atrust", {}).get("api_key", "")
+        timeout = raw.get("atrust", {}).get("timeout", 30)
+        
+        # 验证配置
+        if not host:
+            return ApiResponse(code=3001, message="aTrust 主机地址未配置", data={"connected": False})
+        if not api_id:
+            return ApiResponse(code=3001, message="aTrust API ID 未配置", data={"connected": False})
+        if not api_key:
+            return ApiResponse(code=3001, message="aTrust API Key 未配置", data={"connected": False})
+        
+        # 创建临时客户端进行测试
+        def _test():
+            import requests
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            # 构造 URL
+            test_url = f"{host}/api/v1/admin/getConfig"
+            
+            # 创建会话并禁用代理
+            session = requests.Session()
+            session.verify = False
+            session.trust_env = False  # 禁用环境变量代理
+            
+            try:
+                response = session.get(test_url, timeout=timeout)
+                response.raise_for_status()
+                result = response.json()
+                
+                if result.get("code") == 0:
+                    app_version = result.get("data", {}).get("appversion", "未知")
+                    return True, f"连接成功，设备版本: {app_version[:100]}"
+                else:
+                    return False, f"API 返回错误: {result.get('msg', '未知错误')}"
+            except Exception as e:
+                return False, f"连接失败: {str(e)}"
+            finally:
+                session.close()
+        
+        success, message = await asyncio.to_thread(_test)
+        
+        if success:
+            return ApiResponse(code=0, message=message, data={"connected": True})
         else:
-            return ApiResponse(code=3001, message="连接失败", data={"connected": False})
+            return ApiResponse(code=3001, message=message, data={"connected": False})
+            
+    except AtrustApiError as e:
+        return ApiResponse(code=3001, message=str(e), data={"connected": False})
     except Exception as e:
+        logger.error(f"测试连接异常: {e}")
         return ApiResponse(code=3001, message=f"连接失败: {str(e)}", data={"connected": False})
 
 

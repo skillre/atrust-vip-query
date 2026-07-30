@@ -45,7 +45,7 @@ class DatabaseConfig(BaseModel):
 
 
 class WebConfig(BaseModel):
-    """Web 界面配置（Streamlit）"""
+    """前端配置（React）"""
     host: str = "0.0.0.0"
     port: int = 8501
     title: str = "aTrust 用户虚拟IP查询系统"

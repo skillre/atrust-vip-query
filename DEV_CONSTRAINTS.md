@@ -19,7 +19,7 @@
 
 - Python 3.10+
 - FastAPI (后端 API)
-- Streamlit (Web UI)
+- React (Web UI)
 - SQLite (数据库)
 - Syslog UDP 514 (日志接收)
 
@@ -36,7 +36,6 @@
 | 方案 | 免费额度 | 适合场景 | UDP 514 支持 | 备注 |
 | ------ | ---------- | ---------- | -------------- | ------ |
 | **Replit** | 免费 tier，500MB 内存 | 在线 IDE + 运行 | ✅ | 可直接在浏览器写代码+运行 |
-| **Streamlit Community Cloud** | 免费部署公开应用 | 仅部署 Streamlit UI | ❌ | 只能部署 Streamlit，不支持 FastAPI + UDP |
 | **Render** | Free tier (750h/月) | 部署 Web 服务 | ⚠️ 有限制 | 冷启动，不支持 UDP 端口监听 |
 | **Fly.io** | Free tier (3 shared VM) | 容器化部署 | ✅ | 支持任意端口，最灵活 |
 | **Google Cloud Run** | 免费额度 (200万次/月) | 容器化部署 | ⚠️ 仅 HTTP | 不支持 UDP |
@@ -60,7 +59,7 @@
 
 ### 注意事项
 
-- Streamlit Community Cloud **不适合本项目**（不支持 FastAPI + UDP）
+- React Frontend **不适合本项目**（不支持 FastAPI + UDP）
 - Render 免费 tier 不支持 UDP 端口监听
 - 所有方案都需要代码推送到 Git 仓库
 

@@ -37,7 +37,7 @@
 | 组件 | 技术方案 | 说明 |
 | ------ | --------- | ------ |
 | 后端框架 | FastAPI | 高性能、自动生成API文档 |
-| 前端界面 | Streamlit | 快速搭建、无需前端开发 |
+| 前端界面 | React (Vite) | 现代化 SPA |
 | 数据库 | SQLite | Python内置、零配置、单文件存储 |
 | 数据采集 | 文件导入 + API/Syslog | 支持离线和实时两种方式 |
 
@@ -64,7 +64,7 @@
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │                     FastAPI 后端                           │  │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐   │  │
-│  │  │ Syslog接收  │  │ API查询服务 │  │ Streamlit界面   │   │  │
+│  │  │ Syslog接收  │  │ API查询服务 │  │ React前端    │   │  │
 │  │  │ (端口514)   │  │ (端口8000)  │  │ (端口8501)      │   │  │
 │  │  └──────┬──────┘  └──────┬──────┘  └────────┬────────┘   │  │
 │  │         │                │                   │            │  │
@@ -84,7 +84,7 @@
 | ------ | ------ | ------ |
 | Syslog接收服务 | 514 (UDP) | 接收aTrust日志，解析虚拟IP |
 | API查询服务 | 8000 | 提供RESTful查询接口 |
-| Streamlit界面 | 8501 | Web查询界面 |
+| React前端 | 3000 | Web查询界面 |
 | SQLite数据库 | - | 存储用户和虚拟IP记录 |
 
 ---
@@ -100,7 +100,7 @@
 | 按虚拟IP反查用户 | P1 | 根据IP反查关联用户 |
 | Syslog日志接收 | P1 | 接收并解析aTrust访问日志 |
 | 关键信息抽取 | P0 | 只存储用户名、显示名、手机号、虚拟IP等 |
-| Web查询界面 | P0 | Streamlit对话框式界面 |
+| Web查询界面 | P0 | React SPA 界面 |
 | API接口文档 | P0 | 自动生成Swagger文档 |
 
 ### 3.2 扩展功能（MVP后）
@@ -192,7 +192,7 @@ python app.py
 
 | 服务 | 地址 | 说明 |
 | ------ | ------ | ------ |
-| Web界面 | <http://localhost:8501> | Streamlit查询界面 |
+| Web界面 | <http://localhost:3000> | React查询界面 |
 | API文档 | <http://localhost:8000/docs> | Swagger文档 |
 | API接口 | <http://localhost:8000/api> | RESTful接口 |
 
@@ -227,7 +227,7 @@ python app.py
 │   │   └── routes.py            # API路由
 │   ├── web/                     # Web界面模块
 │   │   ├── __init__.py
-│   │   └── app.py               # Streamlit界面
+│   │   └── dist/              # React构建产物
 │   └── utils/                   # 工具模块
 │       ├── __init__.py
 │       └── signer.py            # API签名工具
@@ -250,7 +250,7 @@ python app.py
 | 数据库模块 | 0.5天 | 数据表、CRUD操作 |
 | Syslog接收 | 1天 | 日志解析、关键信息抽取 |
 | API接口 | 1天 | RESTful接口、签名验证 |
-| Web界面 | 1天 | Streamlit查询页面 |
+| Web界面 | 1天 | React查询页面 |
 | 联调测试 | 1天 | 端到端测试 |
 
 ### 8.2 后续迭代

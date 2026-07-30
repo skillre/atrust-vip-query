@@ -64,3 +64,8 @@ temp/
 frontend/node_modules/
 frontend/dist/
 static/
+
+# 测试文件
+test_*.py
+query_vip.py
+ANALYSIS_API_integration.md

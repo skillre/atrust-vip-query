@@ -100,7 +100,7 @@ Replit 会自动检测到 `.replit` 配置文件。如果没有自动识别：
 
    ```
    FastAPI 服务地址: http://0.0.0.0:8000
-   Streamlit 服务地址: http://0.0.0.0:8501
+   React 前端地址: http://localhost:3000
    ```
 
 ### 步骤 6：访问服务
@@ -109,7 +109,7 @@ Replit 会自动分配一个公网地址，格式如：
 
 - `https://你的用户名-atrust-vip-query.repl.co`
 
-点击 **Webview** 面板即可看到 Streamlit 界面。
+在浏览器中打开 <http://localhost:3000> 访问 React 前端。
 
 ### Replit 使用技巧
 
@@ -283,7 +283,7 @@ aTrust 控制台 ──导出日志──> CSV/Excel 文件 ──上传到 Repl
 
 ### 步骤 3：上传导入
 
-1. 打开 Replit 上的 Streamlit 界面
+1. 打开浏览器访问 React 前端
 2. 点击 **📥 导入数据** 标签页
 3. 点击 **Browse files** 选择导出的日志文件
 4. 点击 **👁️ 预览数据** 检查数据格式
