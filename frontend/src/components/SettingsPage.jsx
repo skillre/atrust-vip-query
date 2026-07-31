@@ -2,23 +2,23 @@ import { useState, useEffect } from "react";
 import API_BASE from "../config";
 
 export default function SettingsPage() {
-const [config, setConfig] = useState(null);
-const [loading, setLoading] = useState(true);
-const [saving, setSaving] = useState(false);
-const [syslogStatus, setSyslogStatus] = useState(null);
-const [trend, setTrend] = useState({ running: false, points: [] });
+	const [config, setConfig] = useState(null);
+	const [loading, setLoading] = useState(true);
+	const [saving, setSaving] = useState(false);
+	const [syslogStatus, setSyslogStatus] = useState(null);
+	const [trend, setTrend] = useState({ running: false, points: [] });
 
-useEffect(() => {
-fetchConfig();
-fetchStatus();
-// 轮询刷新：状态 5s，趋势 2s（组件卸载时清理）
-const statusTimer = setInterval(fetchStatus, 5000);
-const trendTimer = setInterval(fetchTrend, 2000);
-return () => {
-clearInterval(statusTimer);
-clearInterval(trendTimer);
-};
-}, []);
+	useEffect(() => {
+		fetchConfig();
+		fetchStatus();
+		// 轮询刷新：状态 5s，趋势 2s（组件卸载时清理）
+		const statusTimer = setInterval(fetchStatus, 5000);
+		const trendTimer = setInterval(fetchTrend, 2000);
+		return () => {
+			clearInterval(statusTimer);
+			clearInterval(trendTimer);
+		};
+	}, []);
 
 	async function fetchConfig() {
 		try {
@@ -619,17 +619,17 @@ clearInterval(trendTimer);
 							sub={`端口 ${config.syslog_port} (${config.syslog_protocol?.toUpperCase()})`}
 							ok={syslogStatus.syslog_status === "running"}
 						/>
-							<HealthCard
-								label="aTrust API"
-								value={
-									syslogStatus.atrust_api_status === "disabled"
-										? "未启用"
-										: "已连接"
-								}
-								sub="导入模式运行"
-								ok={false}
-								disabled={true}
-							/>
+						<HealthCard
+							label="aTrust API"
+							value={
+								syslogStatus.atrust_api_status === "disabled"
+									? "未启用"
+									: "已连接"
+							}
+							sub="导入模式运行"
+							ok={false}
+							disabled={true}
+						/>
 					</div>
 
 					{/* 实时接收趋势图 */}
@@ -660,7 +660,9 @@ clearInterval(trendTimer);
 										color: "var(--text-secondary)",
 									}}
 								>
-									<span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+									<span
+										style={{ display: "flex", alignItems: "center", gap: 6 }}
+									>
 										<span
 											style={{
 												width: 16,
@@ -671,7 +673,9 @@ clearInterval(trendTimer);
 										/>
 										接收
 									</span>
-									<span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+									<span
+										style={{ display: "flex", alignItems: "center", gap: 6 }}
+									>
 										<span
 											style={{
 												width: 16,
@@ -682,7 +686,9 @@ clearInterval(trendTimer);
 										/>
 										解析成功
 									</span>
-									<span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+									<span
+										style={{ display: "flex", alignItems: "center", gap: 6 }}
+									>
 										<span
 											style={{
 												width: 16,
@@ -786,7 +792,8 @@ clearInterval(trendTimer);
 								<div className="metric-row">
 									<span className="metric-label">写入成功</span>
 									<span className="metric-value">
-										{syslogStatus.syslog_stats?.written?.toLocaleString() || "0"}{" "}
+										{syslogStatus.syslog_stats?.written?.toLocaleString() ||
+											"0"}{" "}
 										条
 									</span>
 								</div>
@@ -800,7 +807,8 @@ clearInterval(trendTimer);
 								<div className="metric-row">
 									<span className="metric-label">批处理大小</span>
 									<span className="metric-value">
-										{syslogStatus.syslog_stats?.batch_size || config.syslog_batch_size}{" "}
+										{syslogStatus.syslog_stats?.batch_size ||
+											config.syslog_batch_size}{" "}
 										条
 									</span>
 								</div>
@@ -877,8 +885,8 @@ function TrendChart({ points, height = 160 }) {
 	const maxV = Math.max(
 		1,
 		...points.map((p) =>
-			Math.max(p.received || 0, p.parsed || 0, p.errors || 0)
-		)
+			Math.max(p.received || 0, p.parsed || 0, p.errors || 0),
+		),
 	);
 	const x = (i) => PAD + (i * (W - PAD * 2)) / (points.length - 1);
 	const y = (v) => H - PAD - (v / maxV) * (H - PAD * 2);
@@ -886,7 +894,7 @@ function TrendChart({ points, height = 160 }) {
 		points
 			.map(
 				(p, i) =>
-					`${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p[key] || 0).toFixed(1)}`
+					`${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p[key] || 0).toFixed(1)}`,
 			)
 			.join(" ");
 
@@ -895,20 +903,20 @@ function TrendChart({ points, height = 160 }) {
 			viewBox={`0 0 ${W} ${H}`}
 			style={{ width: "100%", height: "auto", display: "block" }}
 		>
-			<polyline
-				points={line("received")}
+			<path
+				d={line("received")}
 				fill="none"
 				stroke="var(--accent)"
 				strokeWidth="1.5"
 			/>
-			<polyline
-				points={line("parsed")}
+			<path
+				d={line("parsed")}
 				fill="none"
 				stroke="var(--success)"
 				strokeWidth="1.5"
 			/>
-			<polyline
-				points={line("errors")}
+			<path
+				d={line("errors")}
 				fill="none"
 				stroke="var(--error)"
 				strokeWidth="1.5"
