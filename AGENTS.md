@@ -59,7 +59,7 @@ static/              # React 构建产物部署目录（由 dist/ 拷入，见�
 
 ## 开发约束（重要，详见 DEV_CONSTRAINTS.md）
 
-- **本地只写代码，不运行服务、不装依赖**。所有运行/调试/测试在免费云环境（Replit 开发、Fly.io 部署）中进行。
+- **本地只写代码，不运行服务、不装依赖**。所有运行/调试/测试在**腾讯云免费试用云主机**上进行：功能测试统一以 **docker / docker-compose 方式先上线验证**（不再使用 Replit / Fly.io 等互联网平台）。
 - 修改数据库 schema 需手动 `ALTER`：项目**无迁移系统**。
 - Schema、模型、API、UI 需保持数据契约一致（models.py 是唯一契约来源）。
 
@@ -68,6 +68,12 @@ static/              # React 构建产物部署目录（由 dist/ 拷入，见�
 - **API 薄控制器**：路由只做校验/响应包装，业务委托给 storage 和 collector，统一返回 `ApiResponse`（code/message/data 信封）。查询/导入/导出类端点放 `routes.py`，仪表盘与系统配置类端点放 `dashboard_routes.py`。
 - **前端不直接访问数据库**：只通过 `fetch()` 调 `/api/v1`。
 - 无 ORM、无连接池、无迁移系统 —— 保持轻量，改动时不要引入这些。
+
+## 部署与同步约定（docker 优先）
+
+- **docker 优先（硬性要求）**：项目最终都必须能通过 docker / docker-compose 部署。任何代码改动不得破坏容器化部署能力（镜像构建、compose 启动、数据/配置持久化）。
+- **变更评估**：每次 bug 修复或文件修改完成后，主动评估是否影响容器构建/运行 —— 例如依赖（requirements.txt / package.json）、端口、路径、环境变量、启动流程、config.yaml、数据库 schema、前端构建等。若影响，必须同步更新：`Dockerfile`、`docker-compose.yml`、`docker-entrypoint.sh`、`.dockerignore`、`DEPLOYMENT.md`。
+- **GitHub 同步**：每次改动完成后必须 `git commit` + `git push` 到 GitHub（origin: skillre/atrust-vip-query），提交信息写明变更内容。
 
 ## 新增端到端功能的顺序
 
@@ -86,6 +92,6 @@ static/              # React 构建产物部署目录（由 dist/ 拷入，见�
 | `src/api/CLAUDE.md` | 路由与统一响应信封 |
 | `src/collector/CLAUDE.md` | 三种采集通道的实现约定 |
 | `frontend/src/CLAUDE.md` | React 组件结构与样式约定 |
-| `DEV_CONSTRAINTS.md` | 本地/云环境分工、部署方案对比 |
-| `DEPLOYMENT.md` | 详细部署步骤（Replit / Fly.io） |
+| `DEV_CONSTRAINTS.md` | 本地/云环境分工（腾讯云主机 + docker）、部署与同步约束 |
+| `DEPLOYMENT.md` | 详细部署步骤（腾讯云主机 Docker 部署为当前推荐，Replit / Fly.io 为历史参考） |
 | `README.md` | 面向使用者的总说明 |

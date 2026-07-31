@@ -1,15 +1,17 @@
 # 部署指南
 
-> 本文档提供详细的部署步骤，适用于没有 Replit 或 Fly.io 使用经验的用户。
+> 本文档提供详细的部署步骤。**当前推荐方案：腾讯云主机 Docker 部署**（所有功能测试均以 docker / docker-compose 方式在云主机上线验证）。Replit / Fly.io 方案保留供参考。
 
 ---
 
 ## 目录
 
 1. [前置准备](#前置准备)
-2. [方案一：Replit 部署（推荐新手）](#方案一replit-部署推荐新手)
-3. [方案二：Fly.io 部署（推荐生产）](#方案二flyio-部署推荐生产)
-4. [常见问题](#常见问题)
+2. [方案一：腾讯云主机 Docker 部署（当前推荐）](#方案一腾讯云主机-docker-部署当前推荐)
+3. [方案二：Replit 部署（历史参考）](#方案二replit-部署历史参考)
+4. [方案三：Fly.io 部署（历史参考）](#方案三flyio-部署历史参考)
+5. [方案四：导入模式使用说明](#方案四导入模式使用说明)
+6. [常见问题](#常见问题)
 
 ---
 
@@ -19,9 +21,10 @@
 
 | 平台 | 用途 | 注册地址 |
 | ------ | ------ | ---------- |
-| GitHub | 代码托管 | <https://github.com> |
-| Replit | 在线开发运行 | <https://replit.com> |
-| Fly.io | 正式部署（可选） | <https://fly.io> |
+| GitHub | 代码托管（必选） | <https://github.com> |
+| 腾讯云 | 免费试用云主机，docker 部署测试（必选） | <https://cloud.tencent.com> |
+| Replit | 在线开发运行（历史方案，可选） | <https://replit.com> |
+| Fly.io | 容器化部署（历史方案，可选） | <https://fly.io> |
 
 ### Git 基础操作
 
@@ -43,7 +46,98 @@ git push origin main
 
 ---
 
-## 方案一：Replit 部署（推荐新手）
+## 方案一：腾讯云主机 Docker 部署（当前推荐）
+
+> 当前所有功能测试都在腾讯云免费试用云主机上以 docker / docker-compose 方式完成，本方案也是唯一生产部署方式。
+
+### 步骤 1：准备腾讯云主机
+
+1. 打开 <https://cloud.tencent.com> 注册/登录，领取**免费试用云主机**（轻量应用服务器或 CVM，系统建议 Ubuntu 22.04 / Debian 12）
+2. 在**防火墙/安全组**中放行以下端口：
+   - `8000`（Web 访问）
+   - `514` UDP + TCP（Syslog 接收）
+
+### 步骤 2：安装 Docker 与 Compose 插件
+
+SSH 登录云主机后执行：
+
+```bash
+# 使用国内镜像加速安装 Docker
+curl -fsSL https://get.docker.com | bash -s docker --mirror Aliyun
+
+# 安装 compose 插件（Docker 24+ 自带 docker compose 子命令，若缺失则补装）
+sudo apt-get update && sudo apt-get install -y docker-compose-plugin
+
+# 验证
+sudo docker --version && sudo docker compose version
+```
+
+> 若希望免 sudo 执行 docker 命令，可执行：`sudo usermod -aG docker $USER` 后重新登录。
+
+### 步骤 3：获取代码
+
+```bash
+# 从 GitHub 拉取（推荐，保持与仓库同步）
+git clone https://github.com/skillre/atrust-vip-query.git
+cd atrust-vip-query
+
+# 已有目录时更新
+# git pull origin main
+```
+
+### 步骤 4：准备配置文件
+
+```bash
+# 复制配置模板并按需修改（aTrust API 密钥、运行模式等）
+cp config.yaml.example config.yaml
+vi config.yaml
+```
+
+> 容器启动时 `docker-entrypoint.sh` 也会自动补齐缺失的 config.yaml。
+
+### 步骤 5：一键启动
+
+```bash
+docker compose up -d --build
+```
+
+首次构建需要几分钟（已配置国内 PyPI 镜像）。启动后检查状态：
+
+```bash
+# 查看容器状态
+docker compose ps
+
+# 查看日志
+docker compose logs -f
+```
+
+### 步骤 6：访问与验证
+
+- Web 界面：`http://<云主机IP>:8000`
+- API 文档：`http://<云主机IP>:8000/docs`
+- 健康检查：`http://<云主机IP>:8000/api/v1/system/health`
+
+### 步骤 7：日常更新（拉取新版本）
+
+```bash
+git pull origin main
+docker compose up -d --build
+```
+
+### 常用命令速查
+
+| 命令 | 说明 |
+| ------ | ------ |
+| `docker compose up -d --build` | 构建并启动 |
+| `docker compose ps` | 查看状态 |
+| `docker compose logs -f` | 查看日志 |
+| `docker compose down` | 停止（数据保留在命名卷中） |
+| `docker compose down -v` | 停止并删除数据卷（慎用） |
+| `docker exec -it atrust-vip-query bash` | 进入容器 |
+
+---
+
+## 方案二：Replit 部署（历史参考）
 
 Replit 是一个在线 IDE，可以直接在浏览器中写代码、运行、调试，非常适合开发阶段。
 
@@ -153,7 +247,7 @@ pip install -r requirements.txt
 
 ---
 
-## 方案二：Fly.io 部署（推荐生产）
+## 方案三：Fly.io 部署（历史参考）
 
 Fly.io 支持容器化部署，更灵活，适合正式环境。
 
@@ -259,7 +353,7 @@ Fly.io 会自动分配一个域名，格式如：
 
 ---
 
-## 方案三：Replit 导入模式（最简单）
+## 方案四：导入模式使用说明
 
 如果你的 aTrust 设备无法通过网络访问，可以使用**导入模式**：
 
@@ -271,7 +365,7 @@ aTrust 控制台 ──导出日志──> CSV/Excel 文件 ──上传到 Repl
 
 ### 步骤 1：部署系统
 
-按照「方案一：Replit 部署」的步骤完成部署。
+按照「方案二：Replit 部署」的步骤完成部署。
 
 ### 步骤 2：从 aTrust 导出日志
 
@@ -327,12 +421,19 @@ aTrust 控制台 ──导出日志──> CSV/Excel 文件 ──上传到 Repl
 
 ### Q3: 如何更新代码？
 
-**Replit：**
+**腾讯云主机（当前推荐）：**
+
+```bash
+git pull origin main
+docker compose up -d --build
+```
+
+**Replit（历史）：**
 
 - 直接在 Replit 编辑器中修改
 - 或推送到 GitHub 后在 Replit 中 Pull
 
-**Fly.io：**
+**Fly.io（历史）：**
 
 ```bash
 # 修改代码后
@@ -346,21 +447,29 @@ fly deploy
 
 ### Q4: Syslog 端口 514 需要特殊配置吗？
 
-- **Replit**：支持，无需额外配置
-- **Fly.io**：已在 `fly.toml` 中配置，无需额外操作
+- **腾讯云主机（当前推荐）**：需要在防火墙/安全组中放行 `514` UDP 与 TCP 端口（docker-compose.yml 已映射 514 和 8000）
+- **Replit（历史）**：支持，无需额外配置
+- **Fly.io（历史）**：已在 `fly.toml` 中配置，无需额外操作
 
 ### Q5: 数据库文件在哪里？
 
-- **Replit**：在 Replit 的文件系统中，路径为 `./data/vip_data.db`
-- **Fly.io**：在数据卷中，路径为 `/app/data/vip_data.db`
+- **腾讯云主机（当前推荐）**：docker 命名卷 `vip-data` 中，容器内路径 `/app/data/vip_data.db`（`docker compose down` 不会删除，`docker compose down -v` 才会）
+- **Replit（历史）**：在 Replit 的文件系统中，路径为 `./data/vip_data.db`
+- **Fly.io（历史）**：在数据卷中，路径为 `/app/data/vip_data.db`
 
 ### Q6: 如何查看日志？
 
-**Replit：**
+**腾讯云主机（当前推荐）：**
+
+```bash
+docker compose logs -f
+```
+
+**Replit（历史）：**
 
 - 在 Console 面板直接查看
 
-**Fly.io：**
+**Fly.io（历史）：**
 
 ```bash
 fly logs

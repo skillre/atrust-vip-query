@@ -12,8 +12,10 @@
 
 ### 2. 运行环境
 
-- 所有代码运行、调试、测试都在**免费云环境**中进行
-- 具体云环境选择见下方"云环境方案"章节
+- 所有代码运行、调试、测试都在**腾讯云免费试用云主机**上进行
+- 功能测试统一使用 **docker / docker-compose 方式先上线验证**（构建镜像 → compose 启动 → 功能验证 → 按需更新）
+- **不再使用 Replit、Fly.io 等互联网平台进行测试**
+- 云主机信息见下方"云环境方案"章节
 
 ### 3. 项目技术栈
 
@@ -23,67 +25,61 @@
 - SQLite (数据库)
 - Syslog UDP 514 (日志接收)
 
-### 4. 部署要求
+### 4. 部署要求（docker 优先）
 
-- **用户没有 Replit 或 Fly.io 使用经验**
-- 开发完成后，必须提供**详细的部署步骤说明**
-- 步骤要包含：注册账号、配置项目、部署上线的完整流程
+- **项目最终都必须能通过 docker / docker-compose 部署**，这是硬性要求，任何改动不得破坏容器化部署能力
+- 变更依赖、端口、路径、环境变量、启动流程、config.yaml、数据库 schema 等时，**必须评估并同步更新** `Dockerfile` / `docker-compose.yml` / `docker-entrypoint.sh` / `.dockerignore` / `DEPLOYMENT.md`
+- 每次 bug 修复或文件修改完成后，**必须同步 git commit + push 到 GitHub**（origin: skillre/atrust-vip-query）
 
-## 云环境方案
+## 云环境方案（当前：腾讯云 + Docker）
 
-### 方案对比
+### 当前方案（唯一）
+
+| 项目 | 说明 |
+| ------ | ---------- |
+| 云主机 | 腾讯云免费试用云主机（轻量应用服务器 / CVM） |
+| 部署方式 | docker / docker-compose 一键部署（项目根目录 `docker-compose.yml`） |
+| 测试流程 | 本地写代码 → push GitHub → 云主机 `git pull` → `docker compose up -d --build` → 功能验证 |
+| UDP 514 | 支持（云主机防火墙/安全组需放行 514 与 8000 端口） |
+
+- **为什么不用 Replit / Fly.io**：测试已迁移到腾讯云免费试用云主机，docker 方式上线更贴近生产环境
+- `.replit`、`fly.toml` 等文件保留，仅作为历史参考，**不再使用**
+
+### 历史方案（已弃用，仅供参考）
 
 | 方案 | 免费额度 | 适合场景 | UDP 514 支持 | 备注 |
 | ------ | ---------- | ---------- | -------------- | ------ |
-| **Replit** | 免费 tier，500MB 内存 | 在线 IDE + 运行 | ✅ | 可直接在浏览器写代码+运行 |
-| **Render** | Free tier (750h/月) | 部署 Web 服务 | ⚠️ 有限制 | 冷启动，不支持 UDP 端口监听 |
-| **Fly.io** | Free tier (3 shared VM) | 容器化部署 | ✅ | 支持任意端口，最灵活 |
-| **Google Cloud Run** | 免费额度 (200万次/月) | 容器化部署 | ⚠️ 仅 HTTP | 不支持 UDP |
-| **Railway** | $5 免费额度/月 | 快速部署 | ✅ | 按用量计费 |
-
-### 推荐方案
-
-#### 首选：Replit（开发 + 运行一体化）
-
-- 浏览器内完整 IDE，可写代码 + 安装依赖 + 运行
-- 支持 UDP 端口
-- 适合开发阶段快速迭代
-- **工作流**：本地写代码 → 推送 GitHub → Replit 拉取运行
-
-#### 部署：Fly.io（生产级免费部署）
-
-- 支持 Docker 容器，任意端口
-- 免费 3 个 shared VM
-- 支持 UDP 514 端口监听
-- **工作流**：代码写好后，通过 Dockerfile 部署到 Fly.io
+| **Replit** | 免费 tier，500MB 内存 | 在线 IDE + 运行 | ✅ | 已弃用 |
+| **Fly.io** | Free tier (3 shared VM) | 容器化部署 | ✅ | 已弃用 |
+| Render / Google Cloud Run / Railway | - | - | ⚠️ | 已排除 |
 
 ### 注意事项
 
-- React Frontend **不适合本项目**（不支持 FastAPI + UDP）
-- Render 免费 tier 不支持 UDP 端口监听
-- 所有方案都需要代码推送到 Git 仓库
+- React 前端通过 `npm run build` 构建后由后端静态托管（Docker 镜像内已包含构建流程）
+- Render 免费 tier 不支持 UDP 端口监听（已排除）
+- 云主机防火墙/安全组必须放行 `8000`（Web）与 `514`（Syslog UDP/TCP）
 
 ## 开发工作流
 
 ```
-本地（只写代码）          云环境（运行）
-┌─────────────┐         ┌─────────────────┐
-│ 编写 .py 文件 │  push  │ Replit / Fly.io  │
-│ 编写配置文件  │ ─────→ │ pip install      │
-│ 编写文档     │        │ python app.py    │
-└─────────────┘        └─────────────────┘
+本地（只写代码）          GitHub          腾讯云主机（运行）
+┌─────────────┐  push   ┌──────┐  pull   ┌──────────────────────┐
+│ 编写代码/文档 │ ─────→ │ 仓库  │ ─────→ │ git pull              │
+│ 修改 bug     │        └──────┘        │ docker compose up -d  │
+└─────────────┘                         │ 功能测试 / 验证        │
+                                        └──────────────────────┘
 ```
 
 ## 已创建的配置文件
 
 | 文件 | 用途 |
 | ------ | ------ |
-| `.replit` | Replit 在线 IDE 配置 |
-| `Dockerfile` | Fly.io 容器化部署配置 |
-| `fly.toml` | Fly.io 应用配置 |
-| `docker-compose.yml` | 自建服务器/内网 一键部署 |
-| `.dockerignore` | Docker 构建上下文排除规则 |
+| `Dockerfile` | Docker 镜像构建配置（当前主用） |
+| `docker-compose.yml` | 腾讯云主机 docker-compose 一键部署（当前主用） |
 | `docker-entrypoint.sh` | 容器启动入口（首次补齐 config.yaml） |
+| `.dockerignore` | Docker 构建上下文排除规则 |
+| `.replit` | Replit 配置（历史遗留，不再使用） |
+| `fly.toml` | Fly.io 应用配置（历史遗留，不再使用） |
 | `.gitignore` | Git 忽略规则 |
 
 ## 数据库 Schema 变更记录（无迁移系统，需手动执行）
@@ -119,3 +115,4 @@ sqlite3 ./data/vip_data.db "DELETE FROM vip_records WHERE timestamp < datetime('
 - 2025-01: 添加部署说明要求（用户无平台经验）
 - 2025: Docker 统一打包（docker-compose 一键部署 + 持久化数据卷）
 - 2025: 数据库容量优化（新增 user_current_vip 最新态表、保留 14 天、启用定时清理、支持模糊/批量查询）
+- 2025-08: 测试环境迁移至腾讯云免费试用云主机（docker-compose 上线验证），弃用 Replit / Fly.io；新增 docker 部署文件同步与 GitHub 同步约定
