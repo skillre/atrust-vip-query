@@ -96,12 +96,12 @@ async def query_user_vip(
     结果以 {"matches": [...], "total": N} 形式返回。
     """
     from src.collector.api_collector import AtrustApiError
-    
+
     db = get_database()
-    collector = get_api_collector()
     api_result = None
     db_result = None
     api_error = None
+    api_unconfigured = False  # aTrust 未配置标记（区别于“配置了但查询失败”）
 
     # ---- 模糊模式：直接走数据库多结果查询 ----
     if fuzzy:
@@ -114,44 +114,54 @@ async def query_user_vip(
             message=f"success (database, fuzzy) 命中 {len(matches)} 个用户",
             data={"matches": [m.model_dump() for m in matches], "total": len(matches)}
         )
-    
+
     # ---- 1. 尝试从 aTrust API 实时查询 ----
+    # 仅当 source 需要实时且 aTrust 已配置时才初始化客户端；
+    # 未配置（host/api_id/api_key 为空）时降级为仅数据库查询，避免初始化抛异常。
     if source in ("realtime", "all"):
-        def _query_from_api():
-            # 先尝试按显示名查询
-            users = collector.client.query_user_by_display_name(name)
-            if users:
-                return users, "displayName"
-            # 再尝试按用户名查询
-            users = collector.client.query_user_by_name(name)
-            if users:
-                return users, "name"
-            return [], None
-        
         try:
-            online_users, match_type = await asyncio.to_thread(_query_from_api)
-            
-            if online_users:
-                # 取第一个匹配的用户
-                user = online_users[0]
-                vips = user.get("vips", [])
-                
-                from src.storage.models import VipQueryResult
-                api_result = VipQueryResult(
-                    user_name=user.get("name", ""),
-                    display_name=user.get("displayName"),
-                    is_online=True,
-                    online_vips=[
-                        VipInfo(ip=v.get("ip", ""), real_ip=user.get("remoteIp"))
-                        for v in vips
-                    ] if vips else []
-                )
-        except AtrustApiError as e:
-            api_error = str(e)
-            logger.warning(f"aTrust API 查询失败: {e}")
+            collector = get_api_collector()
         except Exception as e:
-            api_error = str(e)
-            logger.warning(f"aTrust API 查询异常: {e}")
+            collector = None
+            api_unconfigured = True
+            logger.warning(f"aTrust API 客户端初始化失败（未配置?），降级为数据库查询: {e}")
+
+        if collector is not None:
+            def _query_from_api():
+                # 先尝试按显示名查询
+                users = collector.client.query_user_by_display_name(name)
+                if users:
+                    return users, "displayName"
+                # 再尝试按用户名查询
+                users = collector.client.query_user_by_name(name)
+                if users:
+                    return users, "name"
+                return [], None
+
+            try:
+                online_users, match_type = await asyncio.to_thread(_query_from_api)
+
+                if online_users:
+                    # 取第一个匹配的用户
+                    user = online_users[0]
+                    vips = user.get("vips", [])
+
+                    from src.storage.models import VipQueryResult
+                    api_result = VipQueryResult(
+                        user_name=user.get("name", ""),
+                        display_name=user.get("displayName"),
+                        is_online=True,
+                        online_vips=[
+                            VipInfo(ip=v.get("ip", ""), real_ip=user.get("remoteIp"))
+                            for v in vips
+                        ] if vips else []
+                    )
+            except AtrustApiError as e:
+                api_error = str(e)
+                logger.warning(f"aTrust API 查询失败: {e}")
+            except Exception as e:
+                api_error = str(e)
+                logger.warning(f"aTrust API 查询异常: {e}")
     
     # ---- 2. 如果 API 查询成功，直接返回 ----
     if api_result and api_result.online_vips:
@@ -177,10 +187,11 @@ async def query_user_vip(
         return ApiResponse(code=0, message="success (database)", data=db_result.model_dump())
     
     # ---- 5. 都没有结果 ----
-    if api_error:
-        # API 出错，数据库也没有，返回 API 错误提示
+    if api_error and not api_unconfigured:
+        # 仅当 aTrust 已配置但查询失败时才返回 API 错误；
+        # 未配置属于正常降级，应返回“用户不存在”。
         return ApiResponse(code=5001, message=f"API 查询失败且数据库无记录: {api_error}", data=None)
-    
+
     return ApiResponse(code=2001, message="用户不存在", data=None)
 
 
