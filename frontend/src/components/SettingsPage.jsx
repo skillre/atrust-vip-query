@@ -2,15 +2,23 @@ import { useState, useEffect } from "react";
 import API_BASE from "../config";
 
 export default function SettingsPage() {
-	const [config, setConfig] = useState(null);
-	const [loading, setLoading] = useState(true);
-	const [saving, setSaving] = useState(false);
-	const [syslogStatus, setSyslogStatus] = useState(null);
+const [config, setConfig] = useState(null);
+const [loading, setLoading] = useState(true);
+const [saving, setSaving] = useState(false);
+const [syslogStatus, setSyslogStatus] = useState(null);
+const [trend, setTrend] = useState({ running: false, points: [] });
 
-	useEffect(() => {
-		fetchConfig();
-		fetchStatus();
-	}, []);
+useEffect(() => {
+fetchConfig();
+fetchStatus();
+// 轮询刷新：状态 5s，趋势 2s（组件卸载时清理）
+const statusTimer = setInterval(fetchStatus, 5000);
+const trendTimer = setInterval(fetchTrend, 2000);
+return () => {
+clearInterval(statusTimer);
+clearInterval(trendTimer);
+};
+}, []);
 
 	async function fetchConfig() {
 		try {
@@ -31,6 +39,16 @@ export default function SettingsPage() {
 			const data = await resp.json();
 			if (data.code === 0 && data.data) {
 				setSyslogStatus(data.data);
+			}
+		} catch {}
+	}
+
+	async function fetchTrend() {
+		try {
+			const resp = await fetch(`${API_BASE}/system/syslog/trend?minutes=10`);
+			const data = await resp.json();
+			if (data.code === 0 && data.data) {
+				setTrend(data.data);
 			}
 		} catch {}
 	}
@@ -601,17 +619,83 @@ export default function SettingsPage() {
 							sub={`端口 ${config.syslog_port} (${config.syslog_protocol?.toUpperCase()})`}
 							ok={syslogStatus.syslog_status === "running"}
 						/>
-						<HealthCard
-							label="aTrust API"
-							value={
-								syslogStatus.atrust_api_status === "disabled"
-									? "未启用"
-									: "已连接"
-							}
-							sub="导入模式运行"
-							ok={false}
-							disabled={true}
-						/>
+							<HealthCard
+								label="aTrust API"
+								value={
+									syslogStatus.atrust_api_status === "disabled"
+										? "未启用"
+										: "已连接"
+								}
+								sub="导入模式运行"
+								ok={false}
+								disabled={true}
+							/>
+					</div>
+
+					{/* 实时接收趋势图 */}
+					<div style={{ marginTop: 16 }}>
+						<div className="card">
+							<div className="card-header">
+								<div className="card-title">实时接收趋势（近 10 分钟）</div>
+								{syslogStatus.syslog_status === "running" && (
+									<span className="badge badge-online">
+										<span
+											className="status-dot"
+											style={{ width: 6, height: 6 }}
+										/>{" "}
+										{trend.points?.length
+											? `${trend.points[trend.points.length - 1].received} 条/秒`
+											: "等待数据"}
+									</span>
+								)}
+							</div>
+							<div className="card-body">
+								<TrendChart points={trend.points || []} />
+								<div
+									style={{
+										display: "flex",
+										gap: 16,
+										marginTop: 10,
+										fontSize: 12,
+										color: "var(--text-secondary)",
+									}}
+								>
+									<span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+										<span
+											style={{
+												width: 16,
+												height: 3,
+												background: "var(--accent)",
+												display: "inline-block",
+											}}
+										/>
+										接收
+									</span>
+									<span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+										<span
+											style={{
+												width: 16,
+												height: 3,
+												background: "var(--success)",
+												display: "inline-block",
+											}}
+										/>
+										解析成功
+									</span>
+									<span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+										<span
+											style={{
+												width: 16,
+												height: 3,
+												background: "var(--error)",
+												display: "inline-block",
+											}}
+										/>
+										解析失败
+									</span>
+								</div>
+							</div>
+						</div>
 					</div>
 
 					<div
@@ -670,11 +754,17 @@ export default function SettingsPage() {
 									</span>
 								</div>
 								<div className="metric-row">
-									<span className="metric-label">今日接收</span>
+									<span className="metric-label">累计接收</span>
 									<span className="metric-value">
-										{syslogStatus.syslog_stats?.today_received?.toLocaleString() ||
+										{syslogStatus.syslog_stats?.total_received?.toLocaleString() ||
 											"0"}{" "}
 										条
+									</span>
+								</div>
+								<div className="metric-row">
+									<span className="metric-label">接收速率</span>
+									<span className="metric-value">
+										{syslogStatus.syslog_stats?.rate_per_sec ?? 0} 条/秒
 									</span>
 								</div>
 								<div className="metric-row">
@@ -686,17 +776,144 @@ export default function SettingsPage() {
 									</span>
 								</div>
 								<div className="metric-row">
-									<span className="metric-label">批处理大小</span>
+									<span className="metric-label">解析失败</span>
 									<span className="metric-value">
-										{config.syslog_batch_size} 条
+										{syslogStatus.syslog_stats?.parse_failed?.toLocaleString() ||
+											"0"}{" "}
+										条
 									</span>
 								</div>
+								<div className="metric-row">
+									<span className="metric-label">写入成功</span>
+									<span className="metric-value">
+										{syslogStatus.syslog_stats?.written?.toLocaleString() || "0"}{" "}
+										条
+									</span>
+								</div>
+								<div className="metric-row">
+									<span className="metric-label">队列深度</span>
+									<span className="metric-value">
+										解析 {syslogStatus.syslog_stats?.parse_queue ?? 0} / 写入{" "}
+										{syslogStatus.syslog_stats?.write_queue ?? 0}
+									</span>
+								</div>
+								<div className="metric-row">
+									<span className="metric-label">批处理大小</span>
+									<span className="metric-value">
+										{syslogStatus.syslog_stats?.batch_size || config.syslog_batch_size}{" "}
+										条
+									</span>
+								</div>
+								{syslogStatus.syslog_stats?.last_raw_sample && (
+									<div style={{ marginTop: 4 }}>
+										<div className="metric-label" style={{ marginBottom: 4 }}>
+											最近原始日志
+										</div>
+										<pre
+											style={{
+												background: "var(--bg-input)",
+												borderRadius: 6,
+												padding: 8,
+												fontSize: 11,
+												whiteSpace: "pre-wrap",
+												wordBreak: "break-all",
+												maxHeight: 120,
+												overflow: "auto",
+												margin: 0,
+												color: "var(--text-secondary)",
+											}}
+										>
+											{syslogStatus.syslog_stats.last_raw_sample}
+										</pre>
+									</div>
+								)}
+								{syslogStatus.syslog_stats?.last_error_sample && (
+									<div style={{ marginTop: 4 }}>
+										<div className="metric-label" style={{ marginBottom: 4 }}>
+											最近解析失败日志
+										</div>
+										<pre
+											style={{
+												background: "var(--error-rgba)",
+												borderRadius: 6,
+												padding: 8,
+												fontSize: 11,
+												whiteSpace: "pre-wrap",
+												wordBreak: "break-all",
+												maxHeight: 120,
+												overflow: "auto",
+												margin: 0,
+												color: "var(--error)",
+											}}
+										>
+											{syslogStatus.syslog_stats.last_error_sample}
+										</pre>
+									</div>
+								)}
 							</div>
 						</div>
 					</div>
 				</div>
 			)}
 		</div>
+	);
+}
+
+function TrendChart({ points, height = 160 }) {
+	if (!points || points.length < 2) {
+		return (
+			<div
+				className="text-muted"
+				style={{ padding: 24, textAlign: "center", fontSize: 12 }}
+			>
+				暂无数据 — 等待 aTrust 设备发送 Syslog 日志…
+			</div>
+		);
+	}
+
+	const W = 800;
+	const H = height;
+	const PAD = 10;
+	const maxV = Math.max(
+		1,
+		...points.map((p) =>
+			Math.max(p.received || 0, p.parsed || 0, p.errors || 0)
+		)
+	);
+	const x = (i) => PAD + (i * (W - PAD * 2)) / (points.length - 1);
+	const y = (v) => H - PAD - (v / maxV) * (H - PAD * 2);
+	const line = (key) =>
+		points
+			.map(
+				(p, i) =>
+					`${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p[key] || 0).toFixed(1)}`
+			)
+			.join(" ");
+
+	return (
+		<svg
+			viewBox={`0 0 ${W} ${H}`}
+			style={{ width: "100%", height: "auto", display: "block" }}
+		>
+			<polyline
+				points={line("received")}
+				fill="none"
+				stroke="var(--accent)"
+				strokeWidth="1.5"
+			/>
+			<polyline
+				points={line("parsed")}
+				fill="none"
+				stroke="var(--success)"
+				strokeWidth="1.5"
+			/>
+			<polyline
+				points={line("errors")}
+				fill="none"
+				stroke="var(--error)"
+				strokeWidth="1.5"
+			/>
+		</svg>
 	);
 }
 

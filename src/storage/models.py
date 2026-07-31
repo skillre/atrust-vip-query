@@ -202,15 +202,24 @@ class SystemConfig(BaseModel):
 
 
 class SyslogStats(BaseModel):
-    """Syslog 性能统计"""
+    """Syslog 性能统计（键与 SyslogReceiver.get_stats() 返回对齐，dashboard_routes 直接 **stats 透传）"""
     running: bool = False
     listen_address: str = ""
-    today_received: int = 0
-    parse_success: int = 0
-    parse_failed: int = 0
+    total_received: int = 0      # 累计接收包数
+    parse_success: int = 0       # 解析成功条数
+    parse_failed: int = 0        # 解析失败条数（含无用户/VIP 信息）
+    written: int = 0             # 成功写入数据库条数
+    write_errors: int = 0        # 写入失败条数
+    flushes: int = 0             # 刷盘次数
+    batches: int = 0             # 批次条数
+    parse_queue: int = 0         # 解析队列深度
+    write_queue: int = 0         # 写入队列深度
+    rate_per_sec: float = 0.0    # 最近 60 秒平均接收速率（条/秒）
     avg_process_time_ms: float = 0.0
-    batch_size: int = 0
-    flush_interval: float = 0.0
+    batch_size: int = 0          # 批量大小（运行时配置）
+    flush_interval: float = 0.0  # 刷盘间隔（运行时配置）
+    last_raw_sample: str = ""    # 最近一条原始日志样例（诊断用）
+    last_error_sample: str = ""  # 最近一条解析失败日志样例（诊断用）
 
 
 class DatabaseStats(BaseModel):

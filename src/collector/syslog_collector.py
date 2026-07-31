@@ -11,6 +11,7 @@ import queue
 import socket
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from typing import Optional, Dict, Any, List, Tuple
 
@@ -152,17 +153,23 @@ class SyslogReceiver:
         self._parse_queue: queue.Queue = queue.Queue(maxsize=100000)
         self._write_queue: queue.Queue = queue.Queue(maxsize=100000)
 
-        # 性能计数器
+        # 性能计数器（键名与 SyslogStats 模型对齐，API 层直接透传）
         self._stats = {
-            "received": 0,       # 收到的原始包数
-            "parsed": 0,         # 成功解析数
-            "parse_errors": 0,   # 解析失败数
-            "written": 0,        # 成功写入数
-            "write_errors": 0,   # 写入失败数
-            "flushes": 0,        # 刷盘次数
-            "batches": 0,        # 批次写入条数
+            "total_received": 0,  # 收到的原始包数（累计）
+            "parse_success": 0,   # 成功解析数
+            "parse_failed": 0,    # 解析失败数（含无用户/无 VIP 信息）
+            "written": 0,         # 成功写入数
+            "write_errors": 0,    # 写入失败数
+            "flushes": 0,         # 刷盘次数
+            "batches": 0,         # 批次写入条数
         }
         self._stats_lock = threading.Lock()
+
+        # 趋势采样：秒级环形缓冲，最多保留 60 分钟（仅内存）
+        self._trend: deque = deque(maxlen=3600)
+        self._rate_per_sec: float = 0.0       # 最近 60 秒平均接收速率（条/秒）
+        self._last_raw_sample: str = ""       # 最近一条原始日志（诊断用）
+        self._last_error_sample: str = ""     # 最近一条解析失败日志（诊断用）
 
     def start(self) -> bool:
         """启动 Syslog 接收器"""
@@ -223,6 +230,12 @@ class SyslogReceiver:
             )
             self._threads.append(write_thread)
 
+            # 启动趋势采样线程（1 秒粒度，仅内存环形缓冲）
+            sample_thread = threading.Thread(
+                target=self._sample_loop, name="syslog-sample", daemon=True
+            )
+            self._threads.append(sample_thread)
+
             # 启动所有线程
             for t in self._threads:
                 t.start()
@@ -270,10 +283,10 @@ class SyslogReceiver:
         stats = self.get_stats()
         logger.info(
             f"Syslog 接收器已停止 | "
-            f"收到: {stats['received']} | "
-            f"解析成功: {stats['parsed']} | "
+            f"收到: {stats['total_received']} | "
+            f"解析成功: {stats['parse_success']} | "
             f"写入: {stats['written']} | "
-            f"错误: {stats['parse_errors'] + stats['write_errors']}"
+            f"错误: {stats['parse_failed'] + stats['write_errors']}"
         )
 
     def restart(self) -> bool:
@@ -296,7 +309,8 @@ class SyslogReceiver:
                 raw_data = data.decode("utf-8", errors="ignore")
 
                 with self._stats_lock:
-                    self._stats["received"] += 1
+                    self._stats["total_received"] += 1
+                self._last_raw_sample = raw_data[:500]
 
                 # 放入解析队列（满了就丢弃，避免内存暴涨）
                 try:
@@ -304,7 +318,7 @@ class SyslogReceiver:
                 except queue.Full:
                     logger.warning("解析队列已满，丢弃数据包")
                     with self._stats_lock:
-                        self._stats["parse_errors"] += 1
+                        self._stats["parse_failed"] += 1
 
             except socket.timeout:
                 continue
@@ -358,13 +372,14 @@ class SyslogReceiver:
                         if not line:
                             continue
                         with self._stats_lock:
-                            self._stats["received"] += 1
+                            self._stats["total_received"] += 1
+                        self._last_raw_sample = line[:500]
                         try:
                             self._parse_queue.put_nowait((line, addr))
                         except queue.Full:
                             logger.warning("解析队列已满，丢弃 TCP 数据")
                             with self._stats_lock:
-                                self._stats["parse_errors"] += 1
+                                self._stats["parse_failed"] += 1
                 except socket.timeout:
                     continue
         except (ConnectionResetError, BrokenPipeError, OSError):
@@ -393,20 +408,22 @@ class SyslogReceiver:
             try:
                 parsed = self.parser.parse(raw_data)
                 if not parsed:
+                    self._last_error_sample = raw_data[:500]
                     with self._stats_lock:
-                        self._stats["parse_errors"] += 1
+                        self._stats["parse_failed"] += 1
                     continue
 
                 user_info = self.parser.extract_user_info(parsed)
                 if not user_info:
+                    self._last_error_sample = raw_data[:500]
                     with self._stats_lock:
-                        self._stats["parse_errors"] += 1
+                        self._stats["parse_failed"] += 1
                     continue
 
                 vip_record = self.parser.extract_vip_record(parsed, user_info.user_name)
 
                 with self._stats_lock:
-                    self._stats["parsed"] += 1
+                    self._stats["parse_success"] += 1
 
                 # 放入写入队列
                 try:
@@ -418,8 +435,9 @@ class SyslogReceiver:
 
             except Exception as e:
                 logger.error(f"解析异常: {e}")
+                self._last_error_sample = raw_data[:500]
                 with self._stats_lock:
-                    self._stats["parse_errors"] += 1
+                    self._stats["parse_failed"] += 1
 
     # ------------------------------------------------------------------
     # 批量写入线程
@@ -533,9 +551,55 @@ class SyslogReceiver:
         return self._running
 
     def get_stats(self) -> dict:
-        """获取性能统计"""
+        """获取性能统计（键与 SyslogStats 模型对齐，可直接透传）"""
+        with self._stats_lock:
+            stats: Dict[str, Any] = dict(self._stats)
+        stats.update({
+            "parse_queue": self._parse_queue.qsize(),
+            "write_queue": self._write_queue.qsize(),
+            "rate_per_sec": self._rate_per_sec,
+            "batch_size": self.batch_size,
+            "flush_interval": self.flush_interval,
+            "last_raw_sample": self._last_raw_sample,
+            "last_error_sample": self._last_error_sample,
+        })
+        return stats
+
+    def get_trend(self, minutes: int = 30) -> list:
+        """获取最近 N 分钟接收/解析/写入趋势（秒级采样点，最多 60 分钟）"""
+        limit = max(1, min(minutes, 60))
+        return list(self._trend)[-limit * 60:]
+
+    def _snapshot_counts(self) -> dict:
+        """线程安全地读取当前累计计数"""
         with self._stats_lock:
             return dict(self._stats)
+
+    def _sample_loop(self) -> None:
+        """每秒采样一次统计增量，写入趋势环形缓冲（仅内存，不落库）"""
+        last = self._snapshot_counts()
+        while self._running:
+            time.sleep(1.0)
+            try:
+                current = self._snapshot_counts()
+                delta = {k: current[k] - last.get(k, 0) for k in current}
+                last = current
+
+                now = datetime.now()
+                self._trend.append({
+                    "ts": now.strftime("%H:%M:%S"),
+                    "ts_ms": int(now.timestamp() * 1000),
+                    "received": delta["total_received"],
+                    "parsed": delta["parse_success"],
+                    "errors": delta["parse_failed"],
+                    "written": delta["written"],
+                })
+
+                # 最近 60 秒平均接收速率（条/秒）
+                recent = [p["received"] for p in self._trend][-60:]
+                self._rate_per_sec = round(sum(recent) / max(len(recent), 1), 1)
+            except Exception as e:
+                logger.error(f"趋势采样异常: {e}")
 
     def health_check(self) -> dict:
         """检查 Syslog 接收器状态"""

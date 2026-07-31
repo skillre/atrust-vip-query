@@ -262,6 +262,18 @@ async def test_atrust_connection() -> ApiResponse:
         return ApiResponse(code=3001, message=f"连接失败: {str(e)}", data={"connected": False})
 
 
+@router.get("/system/syslog/trend")
+async def get_syslog_trend(
+    minutes: int = Query(10, ge=1, le=60)
+) -> ApiResponse:
+    """获取 Syslog 实时接收/解析/写入趋势（秒级采样点）"""
+    syslog = get_syslog_receiver()
+    if not syslog or not syslog.is_running:
+        return ApiResponse(code=0, message="success", data={"running": False, "points": []})
+    trend = await asyncio.to_thread(syslog.get_trend, minutes)
+    return ApiResponse(code=0, message="success", data={"running": True, "points": trend})
+
+
 @router.post("/system/syslog/restart")
 async def restart_syslog() -> ApiResponse:
     """重启 Syslog 接收器"""

@@ -80,6 +80,8 @@ async def upload_log_file(file: UploadFile = File(...)) -> ApiResponse:
 | `/api/v1/vip/history` | GET | 查询历史记录 |
 | `/api/v1/user/list` | GET | 获取用户列表 |
 | `/api/v1/system/health` | GET | 健康检查 |
+| `/api/v1/system/status-full` | GET | 系统状态全量（含 Syslog 实时统计） |
+| `/api/v1/system/syslog/trend` | GET | Syslog 接收/解析/写入实时趋势（秒级采样） |
 
 ## Architectural Boundaries
 
