@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import API_BASE from "../config";
+import ImportProgressModal from "./ImportProgressModal";
 
 export default function ImportPanel({ onImportComplete }) {
 	const [file, setFile] = useState(null);
@@ -8,9 +9,29 @@ export default function ImportPanel({ onImportComplete }) {
 	const [importHistory, setImportHistory] = useState([]);
 	const fileInputRef = useRef(null);
 
+	// 导入进度弹窗状态
+	const [progressOpen, setProgressOpen] = useState(false);
+	const [phase, setPhase] = useState("parsing"); // parsing|validating|importing|done|error
+	const [percent, setPercent] = useState(0);
+	const [importResult, setImportResult] = useState(null);
+	const [importError, setImportError] = useState("");
+	const [activeFile, setActiveFile] = useState(null); // 弹窗展示用，不受 setFile(null) 影响
+	const timersRef = useRef([]);
+	const tickRef = useRef(null);
+
 	useEffect(() => {
 		fetchImportHistory();
+		return () => clearAllTimers();
 	}, []);
+
+	function clearAllTimers() {
+		timersRef.current.forEach((t) => clearTimeout(t));
+		timersRef.current = [];
+		if (tickRef.current) {
+			clearInterval(tickRef.current);
+			tickRef.current = null;
+		}
+	}
 
 	async function fetchImportHistory() {
 		try {
@@ -49,7 +70,16 @@ export default function ImportPanel({ onImportComplete }) {
 
 	async function handleUpload() {
 		if (!file) return;
+		clearAllTimers();
+		setActiveFile(file);
 		setUploading(true);
+		setImportResult(null);
+		setImportError("");
+		setPhase("parsing");
+		setPercent(0);
+		setProgressOpen(true);
+
+		let taskId = null;
 		try {
 			const formData = new FormData();
 			formData.append("file", file);
@@ -58,18 +88,69 @@ export default function ImportPanel({ onImportComplete }) {
 				body: formData,
 			});
 			const data = await resp.json();
-			if (data.code === 0) {
-				onImportComplete?.();
-				setFile(null);
-				fetchImportHistory();
-			} else {
-				alert(data.message || "导入失败");
+			if (data.code !== 0 || !data.data?.task_id) {
+				setImportError(data.message || "创建导入任务失败");
+				setPhase("error");
+				setUploading(false);
+				return;
 			}
+			taskId = data.data.task_id;
 		} catch (e) {
-			alert("上传失败，请检查网络");
-		} finally {
+			setImportError("上传失败，请检查网络");
+			setPhase("error");
 			setUploading(false);
+			return;
 		}
+
+		// 轮询真实进度
+		let failCount = 0;
+		tickRef.current = setInterval(async () => {
+			try {
+				const r = await fetch(`${API_BASE}/import/progress/${taskId}`);
+				const d = await r.json();
+				if (d.code !== 0 || !d.data) {
+					failCount++;
+					if (failCount >= 5) {
+						clearAllTimers();
+						setImportError(d.message || "无法获取导入进度");
+						setPhase("error");
+						setUploading(false);
+					}
+					return;
+				}
+				failCount = 0;
+				const p = d.data;
+				setPhase(p.phase || "importing");
+				setPercent(p.percent || 0);
+
+				if (p.done) {
+					clearAllTimers();
+					if (p.success) {
+						setImportResult(p.result || {});
+						setPhase("done");
+						setPercent(100);
+						onImportComplete?.();
+						setFile(null);
+						fetchImportHistory();
+						const t = setTimeout(() => setProgressOpen(false), 1600);
+						timersRef.current.push(t);
+					} else {
+						setImportResult(p.result || null);
+						setImportError(p.message || "导入失败");
+						setPhase("error");
+					}
+					setUploading(false);
+				}
+			} catch {
+				failCount++;
+				if (failCount >= 5) {
+					clearAllTimers();
+					setImportError("获取导入进度失败，请检查网络");
+					setPhase("error");
+					setUploading(false);
+				}
+			}
+		}, 400);
 	}
 
 	function formatFileSize(bytes) {
@@ -90,6 +171,19 @@ export default function ImportPanel({ onImportComplete }) {
 
 	return (
 		<div>
+			{progressOpen && (
+				<ImportProgressModal
+					file={activeFile}
+					phase={phase}
+					percent={percent}
+					result={importResult}
+					errorMsg={importError}
+					onClose={() => {
+						clearAllTimers();
+						setProgressOpen(false);
+					}}
+				/>
+			)}
 			<div className="page-header">
 				<div>
 					<h1 className="page-title">数据导入</h1>

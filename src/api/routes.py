@@ -7,6 +7,9 @@
 import asyncio
 import csv
 import io
+import threading
+import uuid
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -25,6 +28,50 @@ from src.storage.models import ApiResponse, HealthData, VipInfo, BatchQueryReque
 
 
 router = APIRouter()
+
+
+# ------------------------------------------------------------------
+# 导入进度任务注册表（进程内，用于前端轮询真实进度）
+# ------------------------------------------------------------------
+_import_tasks: dict[str, dict] = {}
+_import_tasks_lock = threading.Lock()
+# 已完成任务保留时长（秒），超时清理避免内存泄漏
+_IMPORT_TASK_TTL = 300
+
+
+def _new_import_task(filename: str, file_size: int) -> str:
+    """创建一个导入任务，返回 task_id。"""
+    task_id = uuid.uuid4().hex
+    now = time.time()
+    with _import_tasks_lock:
+        # 顺手清理过期的已完成任务
+        expired = [
+            tid for tid, t in _import_tasks.items()
+            if t.get("done") and now - t.get("finished_at", now) > _IMPORT_TASK_TTL
+        ]
+        for tid in expired:
+            _import_tasks.pop(tid, None)
+        _import_tasks[task_id] = {
+            "filename": filename,
+            "file_size": file_size,
+            "phase": "pending",
+            "processed": 0,
+            "total": 0,
+            "percent": 0,
+            "done": False,
+            "success": False,
+            "message": "",
+            "result": None,
+            "created_at": now,
+        }
+    return task_id
+
+
+def _update_import_task(task_id: str, **fields) -> None:
+    with _import_tasks_lock:
+        task = _import_tasks.get(task_id)
+        if task is not None:
+            task.update(fields)
 
 
 # ------------------------------------------------------------------
@@ -313,9 +360,11 @@ async def upload_log_file(
     file: UploadFile = File(..., description="日志文件（CSV/Excel）")
 ) -> ApiResponse:
     """
-    上传并导入日志文件
+    上传并导入日志文件（异步任务）
 
     支持 CSV 和 Excel 格式的 aTrust 访问日志文件。
+    立即返回 task_id，导入在后台线程执行；
+    前端通过 GET /import/progress/{task_id} 轮询真实进度。
     """
     allowed_extensions = {".csv", ".xlsx", ".xls"}
     filename = file.filename or "unknown.csv"
@@ -328,57 +377,131 @@ async def upload_log_file(
         )
 
     try:
-        # 文件大小检查
         content = await file.read()
-        if len(content) > MAX_UPLOAD_SIZE:
-            return ApiResponse(
-                code=4006,
-                message=f"文件过大，最大支持 {MAX_UPLOAD_SIZE // (1024*1024)}MB",
-                data=None
-            )
-
-        if not content:
-            return ApiResponse(
-                code=4002,
-                message="文件为空",
-                data=None
-            )
-
-        importer = get_file_importer()
-
-        # 文件导入在后台线程执行，不阻塞事件循环
-        result = await asyncio.to_thread(importer.import_file, content, filename)
-
-        if result["success"]:
-            # 记录导入日志
-            db = get_database()
-            db.log_import(
-                filename=filename,
-                file_size=len(content),
-                record_count=result.get("total", 0),
-                success_count=result.get("success", 0),
-                fail_count=result.get("failed", 0),
-                status="success" if result.get("failed", 0) == 0 else "partial"
-            )
-            return ApiResponse(
-                code=0,
-                message=result["message"],
-                data=result
-            )
-        else:
-            return ApiResponse(
-                code=4003,
-                message=result["message"],
-                data=result
-            )
-
     except Exception as e:
-        logger.error(f"文件导入失败: {e}")
+        logger.error(f"读取上传文件失败: {e}")
+        return ApiResponse(code=5000, message="读取上传文件失败", data=None)
+
+    if len(content) > MAX_UPLOAD_SIZE:
         return ApiResponse(
-            code=5000,
-            message="文件导入失败，请检查文件格式后重试",
+            code=4006,
+            message=f"文件过大，最大支持 {MAX_UPLOAD_SIZE // (1024*1024)}MB",
             data=None
         )
+
+    if not content:
+        return ApiResponse(code=4002, message="文件为空", data=None)
+
+    task_id = _new_import_task(filename, len(content))
+
+    def _run_import():
+        """后台线程：执行导入并回写进度。"""
+        def _cb(processed: int, total: int, phase: str):
+            if total > 0:
+                percent = processed * 100 // total
+            else:
+                percent = 0
+            # 封顶 99%，真正完成时才置 100
+            if percent > 99:
+                percent = 99
+            _update_import_task(
+                task_id,
+                phase=phase,
+                processed=processed,
+                total=total,
+                percent=percent,
+            )
+
+        _update_import_task(task_id, phase="parsing", percent=0)
+        try:
+            importer = get_file_importer()
+            result = importer.import_file(content, filename, progress_cb=_cb)
+
+            if result.get("success"):
+                db = get_database()
+                db.log_import(
+                    filename=filename,
+                    file_size=len(content),
+                    record_count=result.get("total_rows", 0),
+                    success_count=result.get("imported", 0),
+                    fail_count=result.get("errors", 0),
+                    status="success" if result.get("errors", 0) == 0 else "partial",
+                )
+                _update_import_task(
+                    task_id,
+                    phase="done",
+                    processed=result.get("total_rows", 0),
+                    total=result.get("total_rows", 0),
+                    percent=100,
+                    done=True,
+                    success=True,
+                    message=result.get("message", "导入完成"),
+                    result=result,
+                    finished_at=time.time(),
+                )
+            else:
+                _update_import_task(
+                    task_id,
+                    phase="error",
+                    done=True,
+                    success=False,
+                    message=result.get("message", "导入失败"),
+                    result=result,
+                    finished_at=time.time(),
+                )
+        except Exception as e:
+            logger.error(f"文件导入失败: {e}")
+            _update_import_task(
+                task_id,
+                phase="error",
+                done=True,
+                success=False,
+                message="文件导入失败，请检查文件格式后重试",
+                finished_at=time.time(),
+            )
+
+    # 后台线程执行，不阻塞事件循环；立即返回 task_id
+    threading.Thread(target=_run_import, daemon=True).start()
+
+    return ApiResponse(
+        code=0,
+        message="导入任务已创建",
+        data={"task_id": task_id, "filename": filename, "file_size": len(content)},
+    )
+
+
+@router.get("/import/progress/{task_id}")
+async def get_import_progress(task_id: str) -> ApiResponse:
+    """
+    查询导入任务进度
+
+    前端轮询此接口驱动进度弹窗。
+    返回：phase / processed / total / percent / done / success / message / result
+    """
+    with _import_tasks_lock:
+        task = _import_tasks.get(task_id)
+        snapshot = dict(task) if task is not None else None
+
+    if snapshot is None:
+        return ApiResponse(code=4040, message="任务不存在或已过期", data=None)
+
+    return ApiResponse(
+        code=0,
+        message="success",
+        data={
+            "task_id": task_id,
+            "filename": snapshot.get("filename"),
+            "file_size": snapshot.get("file_size"),
+            "phase": snapshot.get("phase"),
+            "processed": snapshot.get("processed", 0),
+            "total": snapshot.get("total", 0),
+            "percent": snapshot.get("percent", 0),
+            "done": snapshot.get("done", False),
+            "success": snapshot.get("success", False),
+            "message": snapshot.get("message", ""),
+            "result": snapshot.get("result"),
+        },
+    )
 
 
 @router.post("/import/preview")

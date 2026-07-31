@@ -165,18 +165,22 @@ class FileImporter:
         config = get_config()
         self.batch_size = config.database.batch_size
 
-    def import_csv(self, content: str, filename: str = "upload.csv") -> Dict:
+    def import_csv(self, content: str, filename: str = "upload.csv", progress_cb=None) -> Dict:
         """
         导入 CSV 文件（分块批量处理）
 
         Args:
             content: CSV 文件内容（字符串）
             filename: 文件名（用于日志）
+            progress_cb: 可选进度回调 progress_cb(processed:int, total:int, phase:str)
 
         Returns:
             导入结果统计
         """
         logger.info(f"开始导入 CSV 文件: {filename}")
+
+        if progress_cb:
+            progress_cb(0, 0, "parsing")
 
         # 解析 CSV
         rows = _parse_csv_content(content)
@@ -239,6 +243,11 @@ class FileImporter:
                 stats["users_found"] += result["users_ok"]
                 stats["vip_records"] += result["records_ok"]
 
+            # 进度回调：按已处理行数上报（第 1 块前视为"数据验证"，之后为"导入数据库"）
+            if progress_cb:
+                phase = "validating" if chunk_idx == 0 else "importing"
+                progress_cb(end, len(rows), phase)
+
             # 进度日志（每 10% 输出一次）
             progress = (chunk_idx + 1) / total_chunks
             if total_chunks > 1 and (chunk_idx + 1) % max(1, total_chunks // 10) == 0:
@@ -253,13 +262,14 @@ class FileImporter:
         logger.info(stats["message"])
         return stats
 
-    def import_file(self, file_content: bytes, filename: str) -> Dict:
+    def import_file(self, file_content: bytes, filename: str, progress_cb=None) -> Dict:
         """
         导入文件（自动识别格式）
 
         Args:
             file_content: 文件二进制内容
             filename: 文件名
+            progress_cb: 可选进度回调 progress_cb(processed:int, total:int, phase:str)
 
         Returns:
             导入结果统计
@@ -270,7 +280,7 @@ class FileImporter:
             for encoding in ["utf-8", "gbk", "gb2312", "utf-8-sig"]:
                 try:
                     content = file_content.decode(encoding)
-                    return self.import_csv(content, filename)
+                    return self.import_csv(content, filename, progress_cb=progress_cb)
                 except UnicodeDecodeError:
                     continue
 
@@ -284,7 +294,7 @@ class FileImporter:
             }
 
         elif suffix in (".xlsx", ".xls"):
-            return self._import_excel(file_content, filename)
+            return self._import_excel(file_content, filename, progress_cb=progress_cb)
 
         else:
             return {
@@ -296,15 +306,17 @@ class FileImporter:
                 "errors": 0
             }
 
-    def _import_excel(self, file_content: bytes, filename: str) -> Dict:
+    def _import_excel(self, file_content: bytes, filename: str, progress_cb=None) -> Dict:
         """导入 Excel 文件"""
         try:
             import pandas as pd
             import io
 
+            if progress_cb:
+                progress_cb(0, 0, "parsing")
             df = pd.read_excel(io.BytesIO(file_content))
             csv_content = df.to_csv(index=False)
-            return self.import_csv(csv_content, filename)
+            return self.import_csv(csv_content, filename, progress_cb=progress_cb)
 
         except ImportError:
             return {

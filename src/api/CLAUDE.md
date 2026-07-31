@@ -72,7 +72,8 @@ async def upload_log_file(file: UploadFile = File(...)) -> ApiResponse:
 
 | 端点 | 方法 | 说明 |
 | --- | --- | --- |
-| `/api/v1/import/upload` | POST | 上传并导入日志文件 |
+| `/api/v1/import/upload` | POST | 上传并异步导入日志文件（立即返回 task_id） |
+| `/api/v1/import/progress/{task_id}` | GET | 轮询导入任务进度（phase/percent/done/result） |
 | `/api/v1/import/preview` | POST | 预览日志文件 |
 | `/api/v1/vip/query` | GET | 查询用户虚拟IP |
 | `/api/v1/vip/reverse` | GET | 按虚拟IP反查用户 |
