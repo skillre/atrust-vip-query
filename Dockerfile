@@ -24,9 +24,12 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# 安装 Python 依赖（利用缓存层）
+# 配置国内 PyPI 镜像 + 升级 pip（避免旧版 pip 解析失败）
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com pip --upgrade
+
+# 安装 Python 依赖（利用缓存层，使用国内镜像加速）
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com -r requirements.txt
 
 # 复制项目文件（config.yaml / data / logs / 测试脚本等由 .dockerignore 排除）
 COPY . .
