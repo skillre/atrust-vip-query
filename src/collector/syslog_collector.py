@@ -100,11 +100,19 @@ class SyslogParser:
         else:
             timestamp = datetime.now()
 
-        # 确定事件类型
+        # 确定事件类型（官方文档：mainType=vip，subType 如 user.apply_virtual_ip / user.revoke_virtual_ip）
         sub_type = event.get("subType", "")
+        main_type = event.get("mainType", "")
         event_type = "syslog_access"
 
-        if "vip.apply" in sub_type or "assign" in sub_type:
+        if main_type == "vip" or "vip" in sub_type or "virtual_ip" in sub_type:
+            # 释放类：revoke / release；其余（apply 等）均为申请类
+            if "revoke" in sub_type or "release" in sub_type:
+                event_type = "syslog_vip_revoke"
+            else:
+                event_type = "syslog_vip_apply"
+        # 兼容旧格式事件名
+        elif "vip.apply" in sub_type or "assign" in sub_type:
             event_type = "syslog_vip_apply"
         elif "vip.revoke" in sub_type or "release" in sub_type:
             event_type = "syslog_vip_revoke"
