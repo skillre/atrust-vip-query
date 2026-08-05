@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """从 pcap 提取 aTrust syslog 消息（TCP 流重组 + 换行切分）"""
 import json
+import os
 import struct
 import sys
 from collections import defaultdict
@@ -11,7 +12,12 @@ DST_PORT = 30014
 def parse_pcap(path):
     """读取 pcap，返回 [(timestamp, ip_src, ip_dst, tcp_src, tcp_dst, payload), ...]"""
     pkts = []
-    with open(path, "rb") as f:
+    try:
+        f = open(path, "rb")
+    except OSError as e:
+        print(f"无法打开 pcap 文件: {e}")
+        return pkts
+    with f:
         gh = f.read(24)
         if gh[:4] != b"\xd4\xc3\xb2\xa1":
             print("非标准 pcap（可能是 pcapng）")
@@ -88,6 +94,9 @@ def reassemble(pkts):
     return streams
 
 def main():
+    if not os.path.exists(PCAP):
+        print(f"pcap 文件不存在: {PCAP}")
+        sys.exit(1)
     pkts = parse_pcap(PCAP)
     print(f"读取 {len(pkts)} 个 TCP 包")
     streams = reassemble(pkts)
@@ -103,9 +112,12 @@ def main():
             if "<145>" in line or "{" in line:
                 msgs.append(line)
     print(f"提取 {len(msgs)} 条 syslog 消息")
-    with open("/tmp/syslog_reassembled.txt", "w", encoding="utf-8") as f:
-        for m in msgs:
-            f.write(m + "\n")
+    try:
+        with open("/tmp/syslog_reassembled.txt", "w", encoding="utf-8") as f:
+            for m in msgs:
+                f.write(m + "\n")
+    except OSError as e:
+        print(f"写入输出文件失败: {e}")
     # 统计
     ok = 0
     fail = 0
