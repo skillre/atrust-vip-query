@@ -52,7 +52,14 @@ export default function BatchQueryPanel() {
 
 	function exportCsv() {
 		if (!matches || matches.length === 0) return;
-		const header = ["用户名", "显示名", "手机号", "当前虚拟IP", "真实IP", "最近时间"];
+		const header = [
+			"用户名",
+			"显示名",
+			"手机号",
+			"当前虚拟IP",
+			"真实IP",
+			"最近时间",
+		];
 		const rows = matches.map((m) => {
 			const v = m.history_vip;
 			return [

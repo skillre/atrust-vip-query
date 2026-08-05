@@ -67,7 +67,11 @@ export default function HeroSearch({ onSearch }) {
 				<div className="search-hints">
 					<span>支持模糊搜索</span>
 					<span>按 Enter 快速查询</span>
-					{isPhoneInput && <span className="search-hint-phone">检测到手机号，将按手机号精确查询</span>}
+					{isPhoneInput && (
+						<span className="search-hint-phone">
+							检测到手机号，将按手机号精确查询
+						</span>
+					)}
 				</div>
 			</div>
 		</section>
