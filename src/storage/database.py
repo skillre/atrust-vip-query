@@ -374,11 +374,12 @@ class Database:
                         ORDER BY user_name
                     """, (f"%{name}%", f"%{name}%"))
                 else:
+                    # 精确匹配：用户名 / 显示名 / 手机号（手机号仅精确匹配，避免误命中）
                     cursor.execute("""
-                        SELECT user_name, display_name FROM users
-                        WHERE user_name = ? OR display_name = ?
+                        SELECT user_name, display_name, phone FROM users
+                        WHERE user_name = ? OR display_name = ? OR phone = ?
                         ORDER BY user_name
-                    """, (name, name))
+                    """, (name, name, name))
 
                 users = cursor.fetchall()
                 for user in users:
@@ -408,6 +409,7 @@ class Database:
                     results.append(VipQueryResult(
                         user_name=user_name,
                         display_name=user["display_name"],
+                        phone=user["phone"] if "phone" in user.keys() else None,
                         is_online=False,
                         online_vips=[],
                         history_vip=history_vip

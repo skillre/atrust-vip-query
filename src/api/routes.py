@@ -7,6 +7,7 @@
 import asyncio
 import csv
 import io
+import re
 import threading
 import uuid
 import time
@@ -78,9 +79,17 @@ def _update_import_task(task_id: str, **fields) -> None:
 # 查询接口
 # ------------------------------------------------------------------
 
+PHONE_RE = re.compile(r"^\d{11}$")
+
+
+def is_phone_number(text: str) -> bool:
+    """判断输入是否为 11 位纯数字手机号（自动识别用）"""
+    return bool(text and PHONE_RE.match(text.strip()))
+
+
 @router.get("/vip/query")
 async def query_user_vip(
-    name: str = Query(..., description="用户名或显示名"),
+    name: str = Query(..., description="用户名、显示名或手机号"),
     source: str = Query("realtime", description="数据来源: realtime(默认)、database、all"),
     fuzzy: bool = Query(False, description="是否对用户名/显示名做模糊匹配（仅数据库）")
 ) -> ApiResponse:
@@ -94,6 +103,9 @@ async def query_user_vip(
 
     fuzzy=True 时走数据库模糊匹配，可能命中多个用户，
     结果以 {"matches": [...], "total": N} 形式返回。
+
+    手机号查询：输入 11 位纯数字时自动识别为手机号，
+    aTrust API 不支持按手机号查询，因此直接走数据库精确匹配。
     """
     from src.collector.api_collector import AtrustApiError
 
@@ -101,12 +113,15 @@ async def query_user_vip(
     api_result = None
     db_result = None
     api_error = None
-    api_unconfigured = False  # aTrust 未配置标记（区别于“配置了但查询失败”）
+    api_unconfigured = False  # aTrust 未配置标记（区别于"配置了但查询失败"）
+
+    # 自动识别手机号：11 位纯数字 → 仅查数据库（aTrust API 不支持按手机号查询）
+    phone_query = is_phone_number(name)
 
     # ---- 模糊模式：直接走数据库多结果查询 ----
     if fuzzy:
         matches = await asyncio.to_thread(db.query_vips_multi, [name], True)
-        db.log_search(name, "user", len(matches))
+        db.log_search(name, "phone" if phone_query else "user", len(matches))
         if not matches:
             return ApiResponse(code=2001, message="未找到匹配用户", data={"matches": [], "total": 0})
         return ApiResponse(
@@ -115,10 +130,10 @@ async def query_user_vip(
             data={"matches": [m.model_dump() for m in matches], "total": len(matches)}
         )
 
-    # ---- 1. 尝试从 aTrust API 实时查询 ----
+    # ---- 1. 尝试从 aTrust API 实时查询（手机号查询跳过） ----
     # 仅当 source 需要实时且 aTrust 已配置时才初始化客户端；
     # 未配置（host/api_id/api_key 为空）时降级为仅数据库查询，避免初始化抛异常。
-    if source in ("realtime", "all"):
+    if source in ("realtime", "all") and not phone_query:
         try:
             collector = get_api_collector()
         except Exception as e:
@@ -168,8 +183,8 @@ async def query_user_vip(
         db.log_search(name, "user", len(api_result.online_vips))
         return ApiResponse(code=0, message="success (realtime)", data=api_result.model_dump())
     
-    # ---- 3. 查询本地数据库 ----
-    if source in ("realtime", "database", "all"):
+    # ---- 3. 查询本地数据库（手机号查询直接走这里） ----
+    if source in ("realtime", "database", "all") or phone_query:
         db_result = await asyncio.to_thread(db.query_user_vip, name)
     
     # ---- 4. 合并结果 ----
@@ -183,7 +198,7 @@ async def query_user_vip(
     if db_result:
         # 数据库有结果，但用户不在线
         db_result.is_online = False
-        db.log_search(name, "user", 1)
+        db.log_search(name, "phone" if phone_query else "user", 1)
         return ApiResponse(code=0, message="success (database)", data=db_result.model_dump())
     
     # ---- 5. 都没有结果 ----

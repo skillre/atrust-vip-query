@@ -43,6 +43,7 @@ class VipQueryResult(BaseModel):
     """虚拟IP查询结果"""
     user_name: str
     display_name: Optional[str] = None
+    phone: Optional[str] = None
     is_online: bool
     online_vips: List[VipInfo] = []
     history_vip: Optional[VipRecord] = None

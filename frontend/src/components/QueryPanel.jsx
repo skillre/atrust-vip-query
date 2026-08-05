@@ -350,13 +350,16 @@ export default function QueryPanel({ queryInput, queryType }) {
 				{/* 用户结果卡 */}
 				<div className="card">
 					<div className="user-result-header">
-						<div className="user-info">
-							<div className="avatar">{getInitial(result.user_name)}</div>
-							<div>
-								<div className="user-name">{result.user_name}</div>
-								<div className="user-meta">{getDepartment(result)}</div>
+							<div className="user-info">
+								<div className="avatar">{getInitial(result.user_name)}</div>
+								<div>
+									<div className="user-name">{result.user_name}</div>
+									<div className="user-meta">{getDepartment(result)}</div>
+									{result.phone && (
+										<div className="user-meta">📱 {result.phone}</div>
+									)}
+								</div>
 							</div>
-						</div>
 						{isOnline && (
 							<div className="badge badge-online">
 								<span className="status-dot" style={{ width: 8, height: 8 }} />

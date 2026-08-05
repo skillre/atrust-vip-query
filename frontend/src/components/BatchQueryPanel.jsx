@@ -52,12 +52,13 @@ export default function BatchQueryPanel() {
 
 	function exportCsv() {
 		if (!matches || matches.length === 0) return;
-		const header = ["用户名", "显示名", "当前虚拟IP", "真实IP", "最近时间"];
+		const header = ["用户名", "显示名", "手机号", "当前虚拟IP", "真实IP", "最近时间"];
 		const rows = matches.map((m) => {
 			const v = m.history_vip;
 			return [
 				m.user_name,
 				m.display_name || "",
+				m.phone || "",
 				v ? v.virtual_ip : "",
 				v && v.real_ip ? v.real_ip : "",
 				v && v.timestamp ? new Date(v.timestamp).toLocaleString("zh-CN") : "",
@@ -94,7 +95,7 @@ export default function BatchQueryPanel() {
 							value={input}
 							onChange={(e) => setInput(e.target.value)}
 							placeholder={
-								"每行一个用户名或显示名，也可用逗号/空格分隔，例如：\nzhangsan\nlisi\n王五"
+								"每行一个用户名/显示名/手机号，也可用逗号、空格分隔，例如：\nzhangsan\nlisi\n13800138000"
 							}
 							rows={8}
 							style={{
@@ -180,9 +181,10 @@ export default function BatchQueryPanel() {
 								<div className="table-header">
 									<span style={{ width: 140 }}>用户名</span>
 									<span style={{ width: 130 }}>显示名</span>
-									<span style={{ width: 150 }}>当前虚拟IP</span>
-									<span style={{ width: 150 }}>真实IP</span>
-									<span style={{ width: 180 }}>最近时间</span>
+									<span style={{ width: 130 }}>手机号</span>
+									<span style={{ width: 140 }}>当前虚拟IP</span>
+									<span style={{ width: 140 }}>真实IP</span>
+									<span style={{ width: 170 }}>最近时间</span>
 								</div>
 								{matches.map((m, idx) => {
 									const v = m.history_vip;
@@ -194,21 +196,24 @@ export default function BatchQueryPanel() {
 											<span className="text-secondary" style={{ width: 130 }}>
 												{m.display_name || "-"}
 											</span>
+											<span className="text-secondary" style={{ width: 130 }}>
+												{m.phone || "-"}
+											</span>
 											<span
 												className="col-accent"
-												style={{ width: 150, fontFamily: "var(--font-mono)" }}
+												style={{ width: 140, fontFamily: "var(--font-mono)" }}
 											>
 												{v ? v.virtual_ip : "-"}
 											</span>
 											<span
 												className="text-secondary"
-												style={{ width: 150, fontFamily: "var(--font-mono)" }}
+												style={{ width: 140, fontFamily: "var(--font-mono)" }}
 											>
 												{v && v.real_ip ? v.real_ip : "-"}
 											</span>
 											<span
 												className="text-muted"
-												style={{ width: 180, fontFamily: "var(--font-mono)" }}
+												style={{ width: 170, fontFamily: "var(--font-mono)" }}
 											>
 												{v && v.timestamp
 													? new Date(v.timestamp).toLocaleString("zh-CN")
