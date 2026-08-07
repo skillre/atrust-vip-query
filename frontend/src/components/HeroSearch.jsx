@@ -69,7 +69,7 @@ export default function HeroSearch({ onSearch }) {
 					<span>按 Enter 快速查询</span>
 					{isPhoneInput && (
 						<span className="search-hint-phone">
-							检测到手机号，将按手机号精确查询
+							检测到手机号，将自动匹配脱敏号码查询
 						</span>
 					)}
 				</div>

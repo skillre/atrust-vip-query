@@ -375,11 +375,17 @@ class Database:
                     """, (f"%{name}%", f"%{name}%"))
                 else:
                     # 精确匹配：用户名 / 显示名 / 手机号（手机号仅精确匹配，避免误命中）
-                    cursor.execute("""
+                    # aTrust syslog 输出的手机号为掩码格式（前3+****+后4），
+                    # 输入完整 11 位手机号时自动转换为脱敏串一并匹配
+                    phone_variants = [name]
+                    if len(name) == 11 and name.isdigit():
+                        phone_variants.append(name[:3] + "****" + name[-4:])
+                    placeholders = ",".join("?" for _ in phone_variants)
+                    cursor.execute(f"""
                         SELECT user_name, display_name, phone FROM users
-                        WHERE user_name = ? OR display_name = ? OR phone = ?
+                        WHERE user_name = ? OR display_name = ? OR phone IN ({placeholders})
                         ORDER BY user_name
-                    """, (name, name, name))
+                    """, (name, name, *phone_variants))
 
                 users = cursor.fetchall()
                 for user in users:
